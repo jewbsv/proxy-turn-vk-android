@@ -22,6 +22,7 @@ import com.wdtt.client.ProfileGroup
 fun MoveToGroupDialog(
     profile: ConnectionProfile,
     groups: List<ProfileGroup>,
+    excludedGroupIds: Set<String> = emptySet(),
     onDismissRequest: () -> Unit,
     onGroupSelected: (String) -> Unit
 ) {
@@ -64,7 +65,7 @@ fun MoveToGroupDialog(
                         )
                     }
                 }
-                items(groups) { group ->
+                items(groups.filterNot { excludedGroupIds.contains(it.id) }) { group ->
                     val isSelected = group.id == profile.groupId
                     Surface(
                         shape = RoundedCornerShape(12.dp),

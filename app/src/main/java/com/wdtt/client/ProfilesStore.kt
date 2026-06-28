@@ -35,6 +35,19 @@ data class ProfileGroup(
     val name: String
 )
 
+data class ProfileSubscription(
+    val id: String,
+    val name: String,
+    val url: String,
+    val description: String = "",
+    val groupId: String = "",
+    val trafficLimitMb: Double = 0.0,
+    val remoteTrafficUsedMb: Double = 0.0,
+    val remoteUpdatedAt: String = "",
+    val lastSyncAt: Long = 0L,
+    val lastSyncError: String = ""
+)
+
 class ProfilesStore(context: Context) {
     private val appContext = context.applicationContext
     private val settings = SettingsStore(appContext)
@@ -57,6 +70,18 @@ class ProfilesStore(context: Context) {
         private const val GROUPS_IDS_KEY = "groups_ids"
         private fun groupsIdsKey() = stringPreferencesKey(GROUPS_IDS_KEY)
         private fun groupNameKey(id: String) = stringPreferencesKey("group_name_$id")
+
+        private const val SUBSCRIPTIONS_IDS_KEY = "subscriptions_ids"
+        private fun subscriptionsIdsKey() = stringPreferencesKey(SUBSCRIPTIONS_IDS_KEY)
+        private fun subNameKey(id: String) = stringPreferencesKey("sub_name_$id")
+        private fun subUrlKey(id: String) = stringPreferencesKey("sub_url_$id")
+        private fun subDescKey(id: String) = stringPreferencesKey("sub_desc_$id")
+        private fun subGroupIdKey(id: String) = stringPreferencesKey("sub_group_id_$id")
+        private fun subTrafficLimitKey(id: String) = androidx.datastore.preferences.core.doublePreferencesKey("sub_traffic_limit_$id")
+        private fun subRemoteTrafficKey(id: String) = androidx.datastore.preferences.core.doublePreferencesKey("sub_remote_traffic_$id")
+        private fun subRemoteUpdatedKey(id: String) = stringPreferencesKey("sub_remote_updated_$id")
+        private fun subLastSyncKey(id: String) = androidx.datastore.preferences.core.longPreferencesKey("sub_last_sync_$id")
+        private fun subLastErrorKey(id: String) = stringPreferencesKey("sub_last_error_$id")
     }
 
     private val dataStore = appContext.dataStore
@@ -99,7 +124,186 @@ class ProfilesStore(context: Context) {
             list
         }
 
-    suspend fun saveProfile(profile: ConnectionProfile) = withContext(Dispatchers.IO) {
+    val subscriptions: Flow<List<ProfileSubscription>> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            val idsRaw = prefs[subscriptionsIdsKey()] ?: ""
+            if (idsRaw.isBlank()) return@map emptyList()
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            ids.mapNotNull { id ->
+                val name = prefs[subNameKey(id)] ?: return@mapNotNull null
+                val url = prefs[subUrlKey(id)] ?: ""
+                ProfileSubscription(
+                    id = id,
+                    name = name,
+                    url = url,
+                    description = prefs[subDescKey(id)] ?: "",
+                    groupId = prefs[subGroupIdKey(id)] ?: "",
+                    trafficLimitMb = prefs[subTrafficLimitKey(id)] ?: 0.0,
+                    remoteTrafficUsedMb = prefs[subRemoteTrafficKey(id)] ?: 0.0,
+                    remoteUpdatedAt = prefs[subRemoteUpdatedKey(id)] ?: "",
+                    lastSyncAt = prefs[subLastSyncKey(id)] ?: 0L,
+                    lastSyncError = prefs[subLastErrorKey(id)] ?: ""
+                )
+            }
+        }
+
+    suspend fun sumTrafficInGroup(groupId: String): Double {
+        if (groupId.isBlank()) return 0.0
+        return profiles.first().filter { it.groupId == groupId }.sumOf { it.trafficMb }
+    }
+
+    suspend fun saveSubscription(sub: ProfileSubscription) = withContext(Dispatchers.IO) {
+        dataStore.edit { prefs ->
+            val idsRaw = prefs[subscriptionsIdsKey()] ?: ""
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+            if (!ids.contains(sub.id)) ids.add(sub.id)
+            prefs[subscriptionsIdsKey()] = ids.joinToString(",")
+            prefs[subNameKey(sub.id)] = sub.name
+            prefs[subUrlKey(sub.id)] = sub.url
+            prefs[subDescKey(sub.id)] = sub.description
+            prefs[subGroupIdKey(sub.id)] = sub.groupId
+            prefs[subTrafficLimitKey(sub.id)] = sub.trafficLimitMb
+            prefs[subRemoteTrafficKey(sub.id)] = sub.remoteTrafficUsedMb
+            prefs[subRemoteUpdatedKey(sub.id)] = sub.remoteUpdatedAt
+            prefs[subLastSyncKey(sub.id)] = sub.lastSyncAt
+            prefs[subLastErrorKey(sub.id)] = sub.lastSyncError
+        }
+    }
+
+    suspend fun deleteSubscription(id: String) = withContext(Dispatchers.IO) {
+        val sub = getSubscriptionOnce(id)
+        if (sub?.groupId?.isNotBlank() == true) {
+            deleteProfilesInGroup(sub.groupId)
+            dataStore.edit { prefs ->
+                val idsRaw = prefs[groupsIdsKey()] ?: ""
+                val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+                ids.remove(sub.groupId)
+                prefs[groupsIdsKey()] = ids.joinToString(",")
+                prefs.remove(groupNameKey(sub.groupId))
+            }
+        }
+        clearSubscriptionMetadata(id)
+    }
+
+    suspend fun getSubscriptionOnce(id: String): ProfileSubscription? {
+        val prefs = dataStore.data.first()
+        val name = prefs[subNameKey(id)] ?: return null
+        return ProfileSubscription(
+            id = id,
+            name = name,
+            url = prefs[subUrlKey(id)] ?: "",
+            description = prefs[subDescKey(id)] ?: "",
+            groupId = prefs[subGroupIdKey(id)] ?: "",
+            trafficLimitMb = prefs[subTrafficLimitKey(id)] ?: 0.0,
+            remoteTrafficUsedMb = prefs[subRemoteTrafficKey(id)] ?: 0.0,
+            remoteUpdatedAt = prefs[subRemoteUpdatedKey(id)] ?: "",
+            lastSyncAt = prefs[subLastSyncKey(id)] ?: 0L,
+            lastSyncError = prefs[subLastErrorKey(id)] ?: ""
+        )
+    }
+
+    suspend fun addSubscription(url: String): Result<ProfileSubscription> = withContext(Dispatchers.IO) {
+        val trimmedUrl = url.trim()
+        if (trimmedUrl.isEmpty()) return@withContext Result.failure(IllegalArgumentException("Укажите адрес подписки"))
+
+        try {
+            val parsed = SubscriptionImport.fetch(trimmedUrl).getOrThrow()
+            val groupName = parsed.subscriptionName?.trim()?.takeIf { it.isNotEmpty() }
+                ?: return@withContext Result.failure(IllegalArgumentException("В JSON нужно поле subscriptionName"))
+            importProfilesToGroup(groupName, parsed.profiles, fromSubscription = true)
+            val groupId = findGroupByName(groupName)?.id ?: ""
+            val id = UUID.randomUUID().toString()
+            val sub = ProfileSubscription(
+                id = id,
+                name = groupName,
+                url = trimmedUrl,
+                description = parsed.description,
+                groupId = groupId,
+                trafficLimitMb = parsed.trafficLimitMb,
+                remoteTrafficUsedMb = parsed.trafficUsedMb,
+                remoteUpdatedAt = parsed.updatedAt,
+                lastSyncAt = System.currentTimeMillis(),
+                lastSyncError = ""
+            )
+            saveSubscription(sub)
+            Result.success(sub)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun refreshSubscription(id: String): Result<Int> = withContext(Dispatchers.IO) {
+        val sub = getSubscriptionOnce(id) ?: return@withContext Result.failure(IllegalStateException("Подписка не найдена"))
+        if (sub.url.isBlank()) return@withContext Result.failure(IllegalStateException("Адрес подписки пуст"))
+
+        try {
+            val parsed = SubscriptionImport.fetch(sub.url).getOrThrow()
+            val groupName = parsed.subscriptionName?.trim()?.takeIf { it.isNotEmpty() } ?: sub.name
+            importProfilesToGroup(groupName, parsed.profiles, fromSubscription = true)
+            val groupId = findGroupByName(groupName)?.id ?: sub.groupId
+            saveSubscription(
+                sub.copy(
+                    name = groupName,
+                    description = parsed.description.ifBlank { sub.description },
+                    groupId = groupId,
+                    trafficLimitMb = parsed.trafficLimitMb,
+                    remoteTrafficUsedMb = parsed.trafficUsedMb,
+                    remoteUpdatedAt = parsed.updatedAt,
+                    lastSyncAt = System.currentTimeMillis(),
+                    lastSyncError = ""
+                )
+            )
+            Result.success(parsed.profiles.size)
+        } catch (e: Exception) {
+            saveSubscription(
+                sub.copy(
+                    lastSyncAt = System.currentTimeMillis(),
+                    lastSyncError = e.message ?: "Ошибка"
+                )
+            )
+            Result.failure(e)
+        }
+    }
+
+    suspend fun refreshAllSubscriptions(): Int = withContext(Dispatchers.IO) {
+        var ok = 0
+        subscriptions.first().forEach { sub ->
+            if (refreshSubscription(sub.id).isSuccess) ok++
+        }
+        ok
+    }
+
+    suspend fun isSubscriptionGroup(groupId: String): Boolean {
+        if (groupId.isBlank()) return false
+        return subscriptions.first().any { it.groupId == groupId }
+    }
+
+    private suspend fun clearSubscriptionMetadata(id: String) {
+        dataStore.edit { prefs ->
+            val idsRaw = prefs[subscriptionsIdsKey()] ?: ""
+            val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+            ids.remove(id)
+            prefs[subscriptionsIdsKey()] = ids.joinToString(",")
+            prefs.remove(subNameKey(id))
+            prefs.remove(subUrlKey(id))
+            prefs.remove(subDescKey(id))
+            prefs.remove(subGroupIdKey(id))
+            prefs.remove(subTrafficLimitKey(id))
+            prefs.remove(subRemoteTrafficKey(id))
+            prefs.remove(subRemoteUpdatedKey(id))
+            prefs.remove(subLastSyncKey(id))
+            prefs.remove(subLastErrorKey(id))
+        }
+    }
+
+    suspend fun saveProfile(profile: ConnectionProfile, fromSubscriptionSync: Boolean = false) = withContext(Dispatchers.IO) {
+        if (!fromSubscriptionSync && profile.groupId.isNotBlank() && isSubscriptionGroup(profile.groupId)) {
+            val existing = getProfileOnce(profile.id)
+            if (existing == null || existing.groupId != profile.groupId) {
+                throw IllegalArgumentException("В папку подписки нельзя добавлять профили вручную")
+            }
+        }
         dataStore.edit { prefs ->
             val idsRaw = prefs[idsKey()] ?: ""
             val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
@@ -146,7 +350,50 @@ class ProfilesStore(context: Context) {
         }
     }
 
+    suspend fun findGroupByName(name: String): ProfileGroup? {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return null
+        return groups.first().find { it.name.equals(trimmed, ignoreCase = true) }
+    }
+
+    suspend fun deleteProfilesInGroup(groupId: String) = withContext(Dispatchers.IO) {
+        if (groupId.isBlank()) return@withContext
+        val toDelete = profiles.first().filter { it.groupId == groupId }
+        if (toDelete.isEmpty()) return@withContext
+        val currentId = settings.currentProfileId.first()
+        toDelete.forEach { deleteProfile(it.id) }
+        if (toDelete.any { it.id == currentId }) {
+            settings.saveCurrentProfile("", "")
+        }
+    }
+
+    /** Существующая папка с тем же именем: профили в ней удаляются, затем импортируются новые. */
+    suspend fun resolveGroupIdForImport(groupName: String, fromSubscription: Boolean = false): String = withContext(Dispatchers.IO) {
+        val trimmed = groupName.trim()
+        if (trimmed.isEmpty()) return@withContext ""
+        val existing = findGroupByName(trimmed)
+        if (existing != null) {
+            if (!fromSubscription && isSubscriptionGroup(existing.id)) {
+                throw IllegalArgumentException("Папка «$trimmed» — подписка, добавлять профили вручную нельзя")
+            }
+            deleteProfilesInGroup(existing.id)
+            return@withContext existing.id
+        }
+        val newId = UUID.randomUUID().toString()
+        saveGroup(ProfileGroup(newId, trimmed))
+        newId
+    }
+
+    suspend fun importProfilesToGroup(groupName: String, profiles: List<ConnectionProfile>, fromSubscription: Boolean = false) = withContext(Dispatchers.IO) {
+        val groupId = resolveGroupIdForImport(groupName, fromSubscription)
+        for (p in profiles) {
+            saveProfile(p.copy(id = UUID.randomUUID().toString(), groupId = groupId), fromSubscriptionSync = fromSubscription)
+        }
+    }
+
     suspend fun deleteGroup(id: String) = withContext(Dispatchers.IO) {
+        subscriptions.first().find { it.groupId == id }?.let { clearSubscriptionMetadata(it.id) }
+        deleteProfilesInGroup(id)
         dataStore.edit { prefs ->
             val idsRaw = prefs[groupsIdsKey()] ?: ""
             val ids = idsRaw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()

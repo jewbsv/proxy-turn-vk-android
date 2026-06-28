@@ -2,7 +2,7 @@
 
 Android-клиент для VPN-туннеля WireGuard, который ходит до вашего VPS через TURN relay VK — снаружи это выглядит как зашифрованный медиапоток звонка WebRTC, а не как классический VPN.
 
-**Пакет:** `net.qwdtt.client` · **Версия:** 1.2.2
+**Пакет:** `net.qwdtt.client` · **Версия:** 1.2.3
 
 Совместим с сервером и протоколом **WDTT** (оригинал: [amurcanov/proxy-turn-vk-android](https://github.com/amurcanov/proxy-turn-vk-android)). Сервер `wdtt-server`, ссылки `wdtt://`, WRAP/RTP и анонимный VK-auth работают так же — можно поднять VPS оригинальным деплоем и подключиться qWDTT.
 
@@ -150,6 +150,8 @@ qwdtt://config?name=Дом&peer=1.2.3.4:56000&hashes=хеш1,хеш2&workers=18&
 | `10.66.0.0/16` | подсеть клиентов (типичный адрес `10.66.66.x`) |
 
 Пароли: главный + до 10 пользовательских (срок, привязка к устройству). Обновление без рестарта: правка JSON → `kill -HUP $(pidof wdtt-server)`.
+
+**Концепция VPS-bridge** (не реализовано): VPS = участник VK-звонка + `wdtt-server` на одном хосте — [docs/VPS_BRIDGE.md](docs/VPS_BRIDGE.md).
 
 ---
 

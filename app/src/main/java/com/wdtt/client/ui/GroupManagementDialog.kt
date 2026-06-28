@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.RssFeed
 import com.wdtt.client.ProfileGroup
 import com.wdtt.client.ProfilesStore
 import kotlinx.coroutines.launch
@@ -23,6 +24,7 @@ import java.util.UUID
 @Composable
 fun GroupManagementDialog(
     groups: List<ProfileGroup>,
+    subscriptionGroupIds: Set<String> = emptySet(),
     profilesStore: ProfilesStore,
     onDismissRequest: () -> Unit,
     onExportGroup: (ProfileGroup) -> Unit = {}
@@ -49,6 +51,7 @@ fun GroupManagementDialog(
                     }
                 } else {
                     groups.forEach { group ->
+                        val isSubscription = subscriptionGroupIds.contains(group.id)
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -59,20 +62,39 @@ fun GroupManagementDialog(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (isSubscription) Icons.Filled.RssFeed else Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                     Spacer(Modifier.width(12.dp))
-                                    Text(group.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                    Column {
+                                        Text(group.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                                        if (isSubscription) {
+                                            Text(
+                                                "Подписка — управляется на вкладке профилей",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 }
                                 Row {
                                     IconButton(onClick = { onExportGroup(group) }, modifier = Modifier.size(36.dp)) {
                                         Icon(androidx.compose.material.icons.Icons.Default.Share, contentDescription = "Экспорт", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                     }
-                                    IconButton(onClick = { editGroup = group }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Filled.Edit, contentDescription = "Переименовать", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                    }
-                                    IconButton(onClick = { deleteGroup = group }, modifier = Modifier.size(36.dp)) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                    if (!isSubscription) {
+                                        IconButton(onClick = { editGroup = group }, modifier = Modifier.size(36.dp)) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Переименовать", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(onClick = { deleteGroup = group }, modifier = Modifier.size(36.dp)) {
+                                            Icon(Icons.Filled.Delete, contentDescription = "Удалить", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                        }
                                     }
                                 }
                             }
@@ -143,7 +165,7 @@ fun GroupManagementDialog(
         AlertDialog(
             onDismissRequest = { deleteGroup = null },
             title = { Text("Удалить папку?") },
-            text = { Text("Папка «${deleteGroup?.name}» будет удалена. Профили в ней не будут удалены, они останутся без папки.") },
+            text = { Text("Папка «${deleteGroup?.name}» и все профили в ней будут удалены без возможности восстановления.") },
             confirmButton = {
                 Button(
                     onClick = {

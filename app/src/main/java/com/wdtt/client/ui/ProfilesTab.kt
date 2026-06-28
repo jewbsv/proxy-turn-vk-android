@@ -66,6 +66,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipEntry
 import com.wdtt.client.ProfileGroup
+import com.wdtt.client.ProfileSubscription
 import java.util.UUID
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -115,7 +116,7 @@ import androidx.compose.material.FractionalThreshold
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.RssFeed
 import androidx.compose.material.rememberDismissState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.imePadding
@@ -140,6 +141,7 @@ fun ProfilesTab(
 
     val profiles by profilesStore.profiles.collectAsStateWithLifecycle(initialValue = emptyList())
     val groups by profilesStore.groups.collectAsStateWithLifecycle(initialValue = emptyList())
+    val subscriptions by profilesStore.subscriptions.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showMoreMenu by remember { mutableStateOf(false) }
     var showCreateSheet by remember { mutableStateOf(false) }
@@ -261,7 +263,6 @@ fun ProfilesTab(
                                         val content = zis.bufferedReader(Charsets.UTF_8).readText()
                                         val jsonArray = JSONArray(content)
                                         val localGroupsCache = mutableMapOf<String, String>()
-                                        groups.forEach { localGroupsCache[it.name] = it.id }
 
                                         for (i in 0 until jsonArray.length()) {
                                             val obj = jsonArray.getJSONObject(i)
@@ -273,17 +274,12 @@ fun ProfilesTab(
                                             val pass = obj.optString("password", "")
                                             val groupName = obj.optString("groupName", "")
                                             
-                                            var targetGroupId = ""
-                                            if (groupName.isNotBlank()) {
-                                                val existingId = localGroupsCache[groupName]
-                                                if (existingId != null) {
-                                                    targetGroupId = existingId
-                                                } else {
-                                                    val newId = java.util.UUID.randomUUID().toString()
-                                                    profilesStore.saveGroup(com.wdtt.client.ProfileGroup(newId, groupName))
-                                                    localGroupsCache[groupName] = newId
-                                                    targetGroupId = newId
+                                            val targetGroupId = if (groupName.isNotBlank()) {
+                                                localGroupsCache.getOrPut(groupName.trim().lowercase()) {
+                                                    profilesStore.resolveGroupIdForImport(groupName)
                                                 }
+                                            } else {
+                                                ""
                                             }
                                             
                                             profilesStore.createProfile(name, peer, vkHashes, workers, port, pass, targetGroupId)
@@ -332,6 +328,10 @@ fun ProfilesTab(
     var passwordInput by rememberSaveable { mutableStateOf("") }
     var useGlobalHashesInput by rememberSaveable { mutableStateOf(true) }
     var showGroupManagement by rememberSaveable { mutableStateOf(false) }
+    var showAddSubscriptionDialog by rememberSaveable { mutableStateOf(false) }
+    var savingSubscription by remember { mutableStateOf(false) }
+    var refreshingSubId by remember { mutableStateOf<String?>(null) }
+    var deleteSubTarget by remember { mutableStateOf<ProfileSubscription?>(null) }
     var selectedFilterGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var moveToGroupTarget by rememberSaveable { mutableStateOf<ConnectionProfile?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<ConnectionProfile?>(null) }
@@ -344,6 +344,17 @@ fun ProfilesTab(
     var unbindOnlyCurrent by remember { mutableStateOf(true) }
     val savedServerDtlsPort by settingsStore.serverDtlsPort.collectAsStateWithLifecycle(initialValue = 56000)
     val savedManualPortsEnabled by settingsStore.manualPortsEnabled.collectAsStateWithLifecycle(initialValue = false)
+
+    val subscriptionGroupIds = remember(subscriptions) {
+        subscriptions.mapNotNull { it.groupId.takeIf { id -> id.isNotBlank() } }.toSet()
+    }
+    val isSubscriptionFilter = selectedFilterGroup != null && subscriptionGroupIds.contains(selectedFilterGroup)
+    val visibleSubscriptions = remember(subscriptions, selectedFilterGroup) {
+        when (selectedFilterGroup) {
+            null -> subscriptions
+            else -> subscriptions.filter { it.groupId == selectedFilterGroup }
+        }
+    }
 
     val visibleProfiles = remember(displayProfiles, pendingDeletes, selectedFilterGroup) {
         displayProfiles.filterNot { pendingDeletes.contains(it.id) }.filter {
@@ -567,9 +578,49 @@ fun ProfilesTab(
         )
     }
 
+    if (showAddSubscriptionDialog) {
+        AddSubscriptionDialog(
+            saving = savingSubscription,
+            onDismiss = { if (!savingSubscription) showAddSubscriptionDialog = false },
+            onConfirm = { url ->
+                savingSubscription = true
+                scope.launch {
+                    val result = profilesStore.addSubscription(url)
+                    savingSubscription = false
+                    result.fold(
+                        onSuccess = {
+                            Toast.makeText(context, "Подписка «${it.name}» добавлена", Toast.LENGTH_SHORT).show()
+                            selectedFilterGroup = it.groupId.ifBlank { selectedFilterGroup }
+                            showAddSubscriptionDialog = false
+                        },
+                        onFailure = { e ->
+                            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    deleteSubTarget?.let { sub ->
+        DeleteSubscriptionDialog(
+            sub = sub,
+            onDismiss = { deleteSubTarget = null },
+            onConfirm = {
+                scope.launch {
+                    profilesStore.deleteSubscription(sub.id)
+                    if (selectedFilterGroup == sub.groupId) selectedFilterGroup = null
+                    deleteSubTarget = null
+                    Toast.makeText(context, "Подписка удалена", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
     if (showGroupManagement) {
         GroupManagementDialog(
             groups = groups,
+            subscriptionGroupIds = subscriptionGroupIds,
             profilesStore = profilesStore,
             onDismissRequest = { showGroupManagement = false },
             onExportGroup = { group ->
@@ -584,11 +635,16 @@ fun ProfilesTab(
         MoveToGroupDialog(
             profile = moveToGroupTarget!!,
             groups = groups,
+            excludedGroupIds = subscriptionGroupIds,
             onDismissRequest = { moveToGroupTarget = null },
             onGroupSelected = { groupId ->
                 val target = moveToGroupTarget!!
                 scope.launch {
-                    profilesStore.saveProfile(target.copy(groupId = groupId))
+                    try {
+                        profilesStore.saveProfile(target.copy(groupId = groupId))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, e.message ?: "Ошибка", Toast.LENGTH_LONG).show()
+                    }
                 }
                 moveToGroupTarget = null
             }
@@ -779,6 +835,8 @@ fun ProfilesTab(
         val parsed = scannedMultipleProfiles!!
         val list = parsed.profiles
         var folderNameInput by remember { mutableStateOf(parsed.suggestedName ?: "Новая группа") }
+        val importBlocked = groups.find { it.name.equals(folderNameInput.trim(), ignoreCase = true) }
+            ?.let { subscriptionGroupIds.contains(it.id) } == true
         AlertDialog(
             onDismissRequest = { scannedMultipleProfiles = null },
             icon = {
@@ -806,6 +864,42 @@ fun ProfilesTab(
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    if (parsed.description.isNotBlank()) {
+                        Text(
+                            text = parsed.description,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (parsed.trafficUsedMb > 0 || parsed.trafficLimitMb > 0) {
+                        val trafficLine = buildString {
+                            if (parsed.trafficUsedMb > 0) append("Трафик: ${parsed.trafficUsedMb} МБ")
+                            if (parsed.trafficLimitMb > 0) {
+                                if (isNotEmpty()) append(" / ")
+                                append("лимит ${parsed.trafficLimitMb} МБ")
+                            }
+                        }
+                        Text(
+                            text = trafficLine,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    val existingGroup = groups.find { it.name.equals(folderNameInput.trim(), ignoreCase = true) }
+                    val isSubscriptionFolder = existingGroup != null && subscriptionGroupIds.contains(existingGroup.id)
+                    if (isSubscriptionFolder) {
+                        Text(
+                            text = "«${existingGroup!!.name}» — папка подписки. Добавлять профили вручную нельзя.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else if (existingGroup != null) {
+                        Text(
+                            text = "Папка «${existingGroup.name}» уже есть — старые профили в ней будут заменены.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     OutlinedTextField(
                         value = folderNameInput,
                         onValueChange = { folderNameInput = it },
@@ -820,25 +914,32 @@ fun ProfilesTab(
                     onClick = {
                         scope.launch {
                             val finalName = folderNameInput.trim()
-                            var targetGroupId = ""
-                            if (finalName.isNotEmpty()) {
-                                // check if group exists
-                                val existing = groups.find { it.name.equals(finalName, ignoreCase = true) }
-                                if (existing != null) {
-                                    targetGroupId = existing.id
-                                } else {
-                                    val newId = java.util.UUID.randomUUID().toString()
-                                    profilesStore.saveGroup(com.wdtt.client.ProfileGroup(newId, finalName))
-                                    targetGroupId = newId
-                                }
+                            if (finalName.isEmpty()) {
+                                Toast.makeText(context, "Укажите название папки", Toast.LENGTH_SHORT).show()
+                                return@launch
                             }
-                            list.forEach { p ->
-                                profilesStore.saveProfile(p.copy(groupId = targetGroupId))
+                            val targetGroup = groups.find { it.name.equals(finalName, ignoreCase = true) }
+                            if (targetGroup != null && subscriptionGroupIds.contains(targetGroup.id)) {
+                                Toast.makeText(context, "«$finalName» — подписка, импорт запрещён", Toast.LENGTH_LONG).show()
+                                return@launch
                             }
-                            Toast.makeText(context, "Импортировано профилей: ${list.size}", Toast.LENGTH_SHORT).show()
+                            try {
+                                profilesStore.importProfilesToGroup(finalName, list)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, e.message ?: "Ошибка импорта", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            val replaced = groups.any { it.name.equals(finalName, ignoreCase = true) }
+                            Toast.makeText(
+                                context,
+                                if (replaced) "Папка «$finalName» заменена (${list.size} проф.)"
+                                else "Импортировано профилей: ${list.size}",
+                                Toast.LENGTH_SHORT
+                            ).show()
                             scannedMultipleProfiles = null
                         }
                     },
+                    enabled = !importBlocked,
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Импортировать")
@@ -942,11 +1043,11 @@ fun ProfilesTab(
                         }
                     }
 
-                    // 4. Группы
+                    // 4. Группы / подписки
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("4. Группы (Подписки)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("4. Подписки", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         Text(
-                            "Список профилей для массового импорта. Можно указать имя группы (subscriptionName).",
+                            "JSON на HTTPS: subscriptionName, description, trafficUsedMb, trafficLimitMb, profiles[]. Добавление: + → Подписка.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -957,10 +1058,13 @@ fun ProfilesTab(
                         ) {
                             Text(
                                 "{\n" +
-                                "  \"subscriptionName\": \"Моя Группа\",\n" +
+                                "  \"subscriptionName\": \"Моя группа\",\n" +
+                                "  \"description\": \"Описание для пользователя\",\n" +
+                                "  \"trafficUsedMb\": 512.5,\n" +
+                                "  \"trafficLimitMb\": 10240,\n" +
+                                "  \"updatedAt\": \"2026-06-24\",\n" +
                                 "  \"profiles\": [\n" +
-                                "    { \"name\": \"Сервер 1\", \"peer\": \"IP1\" },\n" +
-                                "    { \"name\": \"Сервер 2\", \"peer\": \"IP2\" }\n" +
+                                "    { \"name\": \"Сервер 1\", \"peer\": \"IP:56000\", \"password\": \"...\" }\n" +
                                 "  ]\n" +
                                 "}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -1112,13 +1216,56 @@ fun ProfilesTab(
                     )
                 }
                 items(groups) { group ->
+                    val isSub = subscriptionGroupIds.contains(group.id)
                     FilterChip(
                         selected = selectedFilterGroup == group.id,
                         onClick = { selectedFilterGroup = group.id },
-                        label = { Text(group.name) }
+                        label = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isSub) {
+                                    Icon(
+                                        Icons.Filled.RssFeed,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Text(group.name)
+                            }
+                        }
                     )
                 }
             }
+        }
+
+        visibleSubscriptions.forEach { sub ->
+            SubscriptionInfoCard(
+                sub = sub,
+                isRefreshing = refreshingSubId == sub.id,
+                onRefresh = {
+                    refreshingSubId = sub.id
+                    scope.launch {
+                        val result = profilesStore.refreshSubscription(sub.id)
+                        refreshingSubId = null
+                        result.fold(
+                            onSuccess = { count ->
+                                Toast.makeText(context, "Обновлено профилей: $count", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = { e ->
+                                Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        )
+                    }
+                },
+                onDelete = { deleteSubTarget = sub },
+                onOpenGroup = if (selectedFilterGroup == null && sub.groupId.isNotBlank()) {
+                    { selectedFilterGroup = sub.groupId }
+                } else {
+                    null
+                }
+            )
         }
 
         if (profiles.isEmpty()) {
@@ -1238,9 +1385,14 @@ fun ProfilesTab(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Папка пуста",
+                    text = if (isSubscriptionFilter) {
+                        "Профилей пока нет. Нажмите обновить на карточке подписки."
+                    } else {
+                        "Папка пуста"
+                    },
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
         } else {
@@ -1626,15 +1778,17 @@ fun ProfilesTab(
         
     SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 92.dp))
 
-    FloatingActionButton(
+    if (!isSubscriptionFilter) {
+        FloatingActionButton(
             onClick = { showCreateSheet = true },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "Создать профиль")
+            Icon(Icons.Filled.Add, contentDescription = "Добавить")
         }
+    }
     }
 
     val isPingingAny = pingingState.values.any { it }
@@ -1703,11 +1857,25 @@ fun ProfilesTab(
         ) {
             Column(modifier = Modifier.padding(bottom = 32.dp)) {
                 Text(
-                    text = "Добавить профиль",
+                    text = "Добавить",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        showCreateSheet = false
+                        showAddSubscriptionDialog = true
+                    }.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Filled.RssFeed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Подписка", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Профили по адресу JSON на сервере", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth().clickable {
                         showCreateSheet = false
@@ -1935,98 +2103,26 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
 
 private data class ParsedSubscription(
     val profiles: List<ConnectionProfile>,
-    val suggestedName: String? = null
+    val suggestedName: String? = null,
+    val description: String = "",
+    val trafficUsedMb: Double = 0.0,
+    val trafficLimitMb: Double = 0.0,
+    val updatedAt: String = ""
 )
 
 private fun parseMultipleConfigs(rawText: String): ParsedSubscription? {
-    val trimmed = rawText.trim()
-    if (trimmed.isEmpty()) return null
-
-    val list = mutableListOf<ConnectionProfile>()
-    var suggestedName: String? = null
-
-    // Try to decode Base64 first if it doesn't look like JSON array/object
-    var jsonStr = trimmed
-    if (!trimmed.startsWith("[") && !trimmed.startsWith("{") && !trimmed.startsWith("qwdtt:")) {
-        try {
-            val decodedBytes = android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT)
-            jsonStr = String(decodedBytes, Charsets.UTF_8).trim()
-        } catch (e: Exception) { }
+    val parsed = com.wdtt.client.SubscriptionImport.parsePayload(rawText) ?: run {
+        val single = parseQrConfig(rawText) ?: return null
+        return ParsedSubscription(profiles = listOf(single), suggestedName = single.name)
     }
-
-    // Try parsing as JSON Object with "profiles" array
-    if (jsonStr.startsWith("{")) {
-        try {
-            val rootObj = org.json.JSONObject(jsonStr)
-            val subName = rootObj.optString("subscriptionName", rootObj.optString("groupName", ""))
-            if (subName.isNotBlank()) suggestedName = subName
-            
-            val array = rootObj.optJSONArray("profiles") ?: rootObj.optJSONArray("servers")
-            if (array != null) {
-                for (i in 0 until array.length()) {
-                    val jsonObj = array.optJSONObject(i) ?: continue
-                    val name = jsonObj.optString("name", "QR Профиль")
-                    val peer = jsonObj.optString("peer", "")
-                    if (peer.isEmpty()) continue
-                    val hashes = jsonObj.optString("hashes", jsonObj.optString("vkHashes", ""))
-                    val workers = jsonObj.optInt("workers", jsonObj.optInt("workersPerHash", 18))
-                    val port = jsonObj.optInt("port", jsonObj.optInt("listenPort", 9000))
-                    val pass = jsonObj.optString("password", jsonObj.optString("pass", ""))
-                    
-                    list.add(ConnectionProfile(
-                        id = java.util.UUID.randomUUID().toString(),
-                        name = name,
-                        peer = peer,
-                        vkHashes = hashes,
-                        workersPerHash = workers,
-                        listenPort = port,
-                        password = pass,
-                        groupId = "" 
-                    ))
-                }
-                if (list.isNotEmpty()) return ParsedSubscription(list, suggestedName)
-            }
-        } catch (e: Exception) {}
-    }
-
-    if (jsonStr.startsWith("[")) {
-        try {
-            val jsonArray = org.json.JSONArray(jsonStr)
-            for (i in 0 until jsonArray.length()) {
-                val jsonObj = jsonArray.optJSONObject(i) ?: continue
-                val name = jsonObj.optString("name", "QR Профиль")
-                val peer = jsonObj.optString("peer", "")
-                if (peer.isEmpty()) continue
-                val hashes = jsonObj.optString("hashes", jsonObj.optString("vkHashes", ""))
-                val workers = jsonObj.optInt("workers", jsonObj.optInt("workersPerHash", 18))
-                val port = jsonObj.optInt("port", jsonObj.optInt("listenPort", 9000))
-                val pass = jsonObj.optString("password", jsonObj.optString("pass", ""))
-                
-                if (i == 0 && suggestedName == null) {
-                    val gName = jsonObj.optString("groupName", "")
-                    if (gName.isNotBlank()) suggestedName = gName
-                }
-                
-                list.add(ConnectionProfile(
-                    id = java.util.UUID.randomUUID().toString(),
-                    name = name,
-                    peer = peer,
-                    vkHashes = hashes,
-                    workersPerHash = workers,
-                    listenPort = port,
-                    password = pass,
-                    groupId = "" // will be set during import
-                ))
-            }
-            if (list.isNotEmpty()) return ParsedSubscription(list, suggestedName)
-        } catch (e: Exception) { }
-    }
-
-    // fallback to single config parse
-    val single = parseQrConfig(rawText)
-    if (single != null) return ParsedSubscription(listOf(single), null)
-
-    return null
+    return ParsedSubscription(
+        profiles = parsed.profiles,
+        suggestedName = parsed.subscriptionName,
+        description = parsed.description,
+        trafficUsedMb = parsed.trafficUsedMb,
+        trafficLimitMb = parsed.trafficLimitMb,
+        updatedAt = parsed.updatedAt
+    )
 }
 
 // ==================== Profile Device Management API Client ====================
