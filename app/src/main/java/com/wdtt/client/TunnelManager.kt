@@ -269,6 +269,11 @@ object TunnelManager {
                 cmd.add("-vk-auth")
                 cmd.add(if (params.vkAuthMode.equals("anonymous", ignoreCase = true)) "anonymous" else "account")
 
+                if (params.vkAuthMode.equals("anonymous", ignoreCase = true)) {
+                    cmd.add("-vk-anon-path")
+                    cmd.add(params.vkAnonPath)
+                }
+
                 if (!params.vkAuthMode.equals("anonymous", ignoreCase = true)) {
                     try {
                         updateLog("vk_auth_start", "VK: подтверждаем вход в звонок…", 0, false)
@@ -1128,5 +1133,6 @@ data class TunnelParams(
     val captchaMode: String = "auto", // "auto", "wv" или "rjs"
     val captchaSolveMethod: String = "auto", // "manual" или "auto"
     val vkAuthMode: String = "anonymous", // "account" или "anonymous"
+    val vkAnonPath: String = "vkcalls", // "vkcalls" или "legacy" (только anonymous)
     val detailedLogs: Boolean = false
 )

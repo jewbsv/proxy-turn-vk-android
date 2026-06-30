@@ -20,6 +20,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.net.http.SslError
+import android.os.Message
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -250,6 +253,8 @@ object VkAuthWebViewManager {
             cm.getCookie("https://vk.ru"),
             cm.getCookie("https://m.vk.com"),
             cm.getCookie("https://m.vk.ru"),
+            cm.getCookie("https://id.vk.com"),
+            cm.getCookie("https://id.vk.ru"),
         ).filterNotNull().joinToString(";")
         return raw.split(";")
             .map { it.trim() }
@@ -258,6 +263,78 @@ object VkAuthWebViewManager {
             ?.trim()
             .orEmpty()
     }
+
+    fun clearVkAuthCookies() {
+        val cm = CookieManager.getInstance()
+        cm.removeAllCookies(null)
+        cm.flush()
+    }
+
+    fun authLoadHeaders(): Map<String, String> = mapOf(
+        "Accept-Language" to "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
+    )
+
+    /** URL входа: сначала мобильный vk.ru, затем десктопный (обход ошибок VK ID в WebView). */
+    fun loginStartUrl(attempt: Int): String = when (attempt) {
+        0 -> "https://m.vk.ru/login"
+        1 -> "https://m.vk.ru/"
+        else -> "https://vk.ru/login"
+    }
+
+    fun authUserAgent(context: Context, attempt: Int): String {
+        if (attempt >= 2) {
+            return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        }
+        return WebSettings.getDefaultUserAgent(context)
+    }
+
+    fun applyAuthWebSettings(webView: WebView, context: Context, loginAttempt: Int) {
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            mediaPlaybackRequiresUserGesture = false
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            blockNetworkLoads = false
+            cacheMode = WebSettings.LOAD_DEFAULT
+            javaScriptCanOpenWindowsAutomatically = true
+            setSupportMultipleWindows(true)
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            userAgentString = authUserAgent(context, loginAttempt)
+        }
+        try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                @Suppress("DEPRECATION")
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webView.settings, emptySet())
+            }
+        } catch (_: Exception) {
+        }
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+    }
+
+    internal const val LOGIN_ERROR_WATCHER_JS = """
+        (function() {
+            if (window.__wdtt_login_err_watch) return;
+            window.__wdtt_login_err_watch = true;
+            function check() {
+                try {
+                    var t = (document.body && document.body.innerText) || '';
+                    var low = t.toLowerCase();
+                    if (low.indexOf('unknown method') !== -1) {
+                        window.WdttVkAuth.onLoginPageError('Unknown method passed');
+                    }
+                } catch(e) {}
+            }
+            setInterval(check, 900);
+            if (document.documentElement) {
+                new MutationObserver(check).observe(document.documentElement,
+                    {childList:true, subtree:true, characterData:true});
+            }
+            check();
+        })();
+    """
 
     private fun showAuthNotification(context: Context, mode: VkAuthScreenMode, hash: String?) {
         if (MainActivity.isForeground) return
@@ -325,15 +402,19 @@ class VkAuthActivity : ComponentActivity() {
     private var joinUrlIndex = 0
     private var awaitingLoginBeforeJoin = false
     private var join404Retries = 0
+    private var loginFlowAttempt = 0
+    private var loginRetryInProgress = false
+    private var loginErrorHandledForAttempt = -1
     private var webViewRef: WebView? = null
     private val autoJoinScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var autoJoinJob: Job? = null
     private var autoJoinRunId = 0
 
     private fun joinUrlCandidates(): List<String> = listOf(
+        "https://m.vk.ru/call/join/$joinHash",
+        "https://vk.ru/call/join/$joinHash",
         "https://m.vk.com/call/join/$joinHash",
         "https://vk.com/call/join/$joinHash",
-        "https://vk.ru/call/join/$joinHash",
     )
 
     private fun currentJoinUrl(): String = joinUrlCandidates().getOrElse(joinUrlIndex) {
@@ -649,8 +730,12 @@ class VkAuthActivity : ComponentActivity() {
             screenMode == VkAuthScreenMode.JOIN_CALL && !VkAuthWebViewManager.hasVkSessionCookie()
 
         val startUrl = when (screenMode) {
-            VkAuthScreenMode.LOGIN -> "https://m.vk.com/"
-            VkAuthScreenMode.JOIN_CALL -> if (awaitingLoginBeforeJoin) "https://m.vk.com/" else currentJoinUrl()
+            VkAuthScreenMode.LOGIN -> VkAuthWebViewManager.loginStartUrl(0)
+            VkAuthScreenMode.JOIN_CALL -> if (awaitingLoginBeforeJoin) {
+                VkAuthWebViewManager.loginStartUrl(0)
+            } else {
+                currentJoinUrl()
+            }
         }
         val statusText = when (screenMode) {
             VkAuthScreenMode.LOGIN -> "Войдите в аккаунт VK"
@@ -706,24 +791,16 @@ class VkAuthActivity : ComponentActivity() {
                                 factory = { ctx ->
                                     WebView(ctx).apply {
                                         webViewRef = this
-                                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                                         setBackgroundColor(android.graphics.Color.WHITE)
                                         layoutParams = ViewGroup.LayoutParams(
                                             ViewGroup.LayoutParams.MATCH_PARENT,
                                             ViewGroup.LayoutParams.MATCH_PARENT
                                         )
-                                        settings.apply {
-                                            javaScriptEnabled = true
-                                            domStorageEnabled = true
-                                            databaseEnabled = true
-                                            mediaPlaybackRequiresUserGesture = false
-                                            loadWithOverviewMode = true
-                                            useWideViewPort = true
-                                            blockNetworkLoads = false
-                                            cacheMode = WebSettings.LOAD_DEFAULT
-                                            userAgentString =
-                                                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                                        }
+                                        VkAuthWebViewManager.applyAuthWebSettings(
+                                            this,
+                                            ctx,
+                                            loginFlowAttempt
+                                        )
 
                                         addJavascriptInterface(object {
                                             @JavascriptInterface
@@ -736,6 +813,13 @@ class VkAuthActivity : ComponentActivity() {
                                                 if (screenMode != VkAuthScreenMode.JOIN_CALL) return
                                                 runOnUiThread {
                                                     parseAndFinishTurn(json)
+                                                }
+                                            }
+
+                                            @JavascriptInterface
+                                            fun onLoginPageError(message: String) {
+                                                runOnUiThread {
+                                                    maybeRetryLogin(message)
                                                 }
                                             }
 
@@ -756,6 +840,7 @@ class VkAuthActivity : ComponentActivity() {
                                         webViewClient = object : WebViewClient() {
                                             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                                                 super.onPageStarted(view, url, favicon)
+                                                loginRetryInProgress = false
                                                 if (screenMode == VkAuthScreenMode.JOIN_CALL) {
                                                     resetAutoJoinForNewPage(view)
                                                     view?.evaluateJavascript(interceptorJSCode, null)
@@ -771,9 +856,11 @@ class VkAuthActivity : ComponentActivity() {
                                                 }
                                                 if (screenMode == VkAuthScreenMode.LOGIN) {
                                                     checkLoginAndClose(url)
+                                                    injectLoginErrorWatcher(view)
                                                 }
                                                 if (awaitingLoginBeforeJoin) {
                                                     checkLoginThenOpenJoin(view, url)
+                                                    injectLoginErrorWatcher(view)
                                                 }
                                             }
 
@@ -799,11 +886,38 @@ class VkAuthActivity : ComponentActivity() {
                                             }
                                         }
                                         webChromeClient = object : WebChromeClient() {
+                                            override fun onCreateWindow(
+                                                view: WebView,
+                                                isDialog: Boolean,
+                                                isUserGesture: Boolean,
+                                                resultMsg: Message
+                                            ): Boolean {
+                                                val transport = resultMsg.obj as WebView.WebViewTransport
+                                                transport.webView = view
+                                                resultMsg.sendToTarget()
+                                                return true
+                                            }
+
+                                            override fun onJsAlert(
+                                                view: WebView?,
+                                                url: String?,
+                                                message: String?,
+                                                result: android.webkit.JsResult?
+                                            ): Boolean {
+                                                val msg = message.orEmpty()
+                                                if (msg.contains("Unknown method", ignoreCase = true)) {
+                                                    maybeRetryLogin(msg)
+                                                    result?.cancel()
+                                                    return true
+                                                }
+                                                return false
+                                            }
+
                                             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                                                 if (newProgress >= 90) isLoading = false
                                             }
                                         }
-                                        loadUrl(startUrl)
+                                        loadUrl(startUrl, VkAuthWebViewManager.authLoadHeaders())
                                     }
                                 }
                             )
@@ -819,14 +933,62 @@ class VkAuthActivity : ComponentActivity() {
         }
     }
 
+    private fun isOnVkLoginFlow(pageUrl: String?): Boolean {
+        val url = pageUrl.orEmpty().lowercase()
+        return (url.contains("id.vk.com") || url.contains("id.vk.ru")) &&
+            (url.contains("authorize") || url.contains("login") || url.contains("auth"))
+    }
+
+    private fun injectLoginErrorWatcher(view: WebView?) {
+        view?.evaluateJavascript(VkAuthWebViewManager.LOGIN_ERROR_WATCHER_JS, null)
+    }
+
+    private fun maybeRetryLogin(reason: String) {
+        if (loginHandled || loginRetryInProgress) return
+        if (loginErrorHandledForAttempt == loginFlowAttempt) return
+        val needsLogin = screenMode == VkAuthScreenMode.LOGIN || awaitingLoginBeforeJoin
+        if (!needsLogin) return
+
+        loginErrorHandledForAttempt = loginFlowAttempt
+
+        if (loginFlowAttempt >= 2) {
+            VkAuthWebViewManager.logAuth("Вход VK: все варианты исчерпаны ($reason)", isError = true)
+            when (screenMode) {
+                VkAuthScreenMode.LOGIN ->
+                    VkAuthWebViewManager.notifyLoginFailure(Exception(reason))
+                VkAuthScreenMode.JOIN_CALL ->
+                    VkAuthWebViewManager.notifyTurnResult(Result.failure(Exception(reason)))
+            }
+            finish()
+            return
+        }
+
+        loginRetryInProgress = true
+        loginFlowAttempt++
+        val nextUrl = VkAuthWebViewManager.loginStartUrl(loginFlowAttempt)
+        VkAuthWebViewManager.logAuth(
+            "Вход VK: ошибка «$reason», пробуем вариант ${loginFlowAttempt + 1}/3 → $nextUrl"
+        )
+        VkAuthWebViewManager.clearVkAuthCookies()
+        val wv = webViewRef
+        if (wv != null) {
+            VkAuthWebViewManager.applyAuthWebSettings(wv, applicationContext, loginFlowAttempt)
+            wv.evaluateJavascript(
+                "window.__wdtt_login_err_watch=false;",
+                null
+            )
+            wv.loadUrl(nextUrl, VkAuthWebViewManager.authLoadHeaders())
+        }
+        loginRetryInProgress = false
+    }
+
     private fun checkLoginThenOpenJoin(view: WebView?, pageUrl: String?) {
         if (!awaitingLoginBeforeJoin || screenMode != VkAuthScreenMode.JOIN_CALL) return
         val sid = VkAuthWebViewManager.vkRemixSid()
         if (sid.length < 8) return
 
         val url = pageUrl.orEmpty().lowercase()
-        val onLoginFlow = url.contains("id.vk.com") && (url.contains("authorize") || url.contains("login"))
-        if (onLoginFlow) return
+        if (isOnVkLoginFlow(url)) return
 
         awaitingLoginBeforeJoin = false
         joinUrlIndex = 0
@@ -867,8 +1029,7 @@ class VkAuthActivity : ComponentActivity() {
         if (sid.length < 8) return
 
         val url = pageUrl.orEmpty().lowercase()
-        val onLoginFlow = url.contains("id.vk.com") && (url.contains("authorize") || url.contains("login"))
-        if (onLoginFlow) return
+        if (isOnVkLoginFlow(url)) return
 
         loginHandled = true
         VkAuthWebViewManager.logAuth("Вход VK выполнен, закрываем WebView")

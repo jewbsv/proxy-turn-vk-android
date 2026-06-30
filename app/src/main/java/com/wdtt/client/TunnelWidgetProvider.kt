@@ -42,6 +42,7 @@ class TunnelWidgetProvider : AppWidgetProvider() {
                     val password = store.connectionPassword.first()
                     val captchaMode = store.captchaMode.first()
                     val captchaMethod = store.captchaSolveMethod.first()
+                    val vkAnonPath = store.vkAnonPath.first()
                     val manualPortsEnabled = store.manualPortsEnabled.first()
                     val serverDtlsPort = if (manualPortsEnabled) store.serverDtlsPort.first() else 56000
                     val peerWithPort = if (basePeer.isBlank()) basePeer else PeerAddress.ensurePort(basePeer, serverDtlsPort)
@@ -58,6 +59,7 @@ class TunnelWidgetProvider : AppWidgetProvider() {
                             putExtra("connection_password", password)
                             putExtra("captcha_mode", captchaMode)
                             putExtra("captcha_solve_method", captchaMethod)
+                            putExtra("vk_anon_path", if (vkAnonPath.equals("legacy", ignoreCase = true)) "legacy" else "vkcalls")
                         }
                         
                         if (Build.VERSION.SDK_INT >= 26) {

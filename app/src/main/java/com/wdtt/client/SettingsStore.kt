@@ -71,6 +71,7 @@ class SettingsStore(context: Context) {
         private val CAPTCHA_WBV_SOLVE_METHOD = stringPreferencesKey("captcha_wbv_solve_method") // "manual" or "auto"
 
         private val VK_AUTH_MODE = stringPreferencesKey("vk_auth_mode") // "account" or "anonymous"
+        private val VK_ANON_PATH = stringPreferencesKey("vk_anon_path") // "vkcalls" or "legacy"
         
         // ═══ VPN Exclusions Mode ═══
         private val IS_WHITELIST = booleanPreferencesKey("is_whitelist")
@@ -163,6 +164,7 @@ class SettingsStore(context: Context) {
     val captchaMode: Flow<String> = dataStore.data.map { it[CAPTCHA_MODE] ?: "auto" }
     val captchaSolveMethod: Flow<String> = dataStore.data.map { it[CAPTCHA_SOLVE_METHOD] ?: "auto" }
     val vkAuthMode: Flow<String> = dataStore.data.map { it[VK_AUTH_MODE] ?: "anonymous" }
+    val vkAnonPath: Flow<String> = dataStore.data.map { it[VK_ANON_PATH] ?: "vkcalls" }
     val captchaWbvSolveMethod: Flow<String> = dataStore.data.map { it[CAPTCHA_WBV_SOLVE_METHOD] ?: "auto" }
 
     // ═══ VPN Exclusions Mode ═══
@@ -404,6 +406,13 @@ class SettingsStore(context: Context) {
         val normalized = if (mode.equals("anonymous", ignoreCase = true)) "anonymous" else "account"
         dataStore.edit { prefs ->
             prefs[VK_AUTH_MODE] = normalized
+        }
+    }
+
+    suspend fun saveVkAnonPath(path: String) {
+        val normalized = if (path.equals("legacy", ignoreCase = true)) "legacy" else "vkcalls"
+        dataStore.edit { prefs ->
+            prefs[VK_ANON_PATH] = normalized
         }
     }
 

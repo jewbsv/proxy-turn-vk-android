@@ -175,6 +175,7 @@ fun SettingsTabContent(
     var workersInput by rememberSaveable { mutableFloatStateOf(18f) }
     var showHashesDialog by rememberSaveable { mutableStateOf(false) }
     var autoCaptchaEnabled by rememberSaveable { mutableStateOf(true) }
+    var useVKCallsAuth by rememberSaveable { mutableStateOf(true) }
     var useWVCaptcha by rememberSaveable { mutableStateOf(false) }
     var isManualMode by rememberSaveable { mutableStateOf(true) }
     var wbvManualMode by rememberSaveable { mutableStateOf(true) }
@@ -247,6 +248,7 @@ fun SettingsTabContent(
         val captchaMethod = settingsStore.captchaSolveMethod.first()
         val wbvCaptchaMethod = settingsStore.captchaWbvSolveMethod.first()
         val vkAuthMode = settingsStore.vkAuthMode.first()
+        val vkAnonPath = settingsStore.vkAnonPath.first()
         
         peerInput = peer
         val initialHashesList = hashes.split(Regex("[,\\s\\n]+"))
@@ -264,6 +266,7 @@ fun SettingsTabContent(
         wbvManualMode = wbvCaptchaMethod != "auto"
         isManualMode = if (captchaMode == "wv") wbvManualMode else captchaMethod != "auto"
         vkAccountAuth = !vkAuthMode.equals("anonymous", ignoreCase = true)
+        useVKCallsAuth = !vkAnonPath.equals("legacy", ignoreCase = true)
         
         initialized = true
         vkLoggedIn = VkAuthWebViewManager.hasVkSessionCookie()
@@ -427,6 +430,7 @@ fun SettingsTabContent(
     var pendingStartAfterVpnPermission by remember { mutableStateOf(false) }
 
     fun startTunnelService() {
+        val effectiveVkAnonPath = if (useVKCallsAuth) "vkcalls" else "legacy"
         val effectiveCaptchaMode = if (autoCaptchaEnabled) "auto" else if (useWVCaptcha) "wv" else "rjs"
         val effectiveCaptchaSolveMethod = if (!autoCaptchaEnabled && effectiveCaptchaMode == "wv" && isManualMode) "manual" else "auto"
         val hashesList = combinedHashes.split(Regex("[,\\s\\n]+")).filter { it.isNotBlank() && it.length >= 16 }.distinct()
@@ -442,6 +446,7 @@ fun SettingsTabContent(
             )
             settingsStore.saveCaptchaMode(effectiveCaptchaMode)
             settingsStore.saveCaptchaSolveMethod(effectiveCaptchaSolveMethod)
+            settingsStore.saveVkAnonPath(effectiveVkAnonPath)
         }
         val intent = Intent(context, TunnelService::class.java).apply {
             action = "START"
@@ -455,6 +460,7 @@ fun SettingsTabContent(
             putExtra("captcha_mode", effectiveCaptchaMode)
             putExtra("captcha_solve_method", effectiveCaptchaSolveMethod)
             putExtra("vk_auth_mode", if (vkAccountAuth) "account" else "anonymous")
+            putExtra("vk_anon_path", effectiveVkAnonPath)
         }
         if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent)
         else context.startService(intent)
@@ -1423,9 +1429,47 @@ fun SettingsTabContent(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                 )
 
-                // — Авто капча —
+                // — Режим VK (анонимный) —
                 AnimatedVisibility(visible = !vkAccountAuth) {
                 Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Режим VK",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ProtocolChip("VKCalls", useVKCallsAuth, enabled = !tunnelRunning) {
+                            useVKCallsAuth = true
+                            scope.launch { settingsStore.saveVkAnonPath("vkcalls") }
+                        }
+                        ProtocolChip("Капча", !useVKCallsAuth, enabled = !tunnelRunning) {
+                            useVKCallsAuth = false
+                            scope.launch { settingsStore.saveVkAnonPath("legacy") }
+                        }
+                    }
+                }
+                if (useVKCallsAuth) {
+                    Text(
+                        "TURN через VKCalls API, обычно без капчи. При ошибке — fallback на legacy.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = !useVKCallsAuth,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                Column {
+                // — Авто капча —
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1553,6 +1597,8 @@ fun SettingsTabContent(
                 }
                 }
                 }
+                }
+                }
         }
 
         // ═══ Кнопки: Секреты + Подключить ═══
@@ -1642,24 +1688,19 @@ private fun ProtocolChip(
         enabled = enabled,
         modifier = modifier,
         label = {
-            Box(
-                modifier = Modifier,
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isError) MaterialTheme.colorScheme.error else (if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isError) MaterialTheme.colorScheme.error else Color.Unspecified,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         },
         shape = RoundedCornerShape(16.dp),
         colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primary,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface,
             disabledLabelColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)

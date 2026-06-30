@@ -82,6 +82,7 @@ class TunnelService : Service() {
                             captchaMode = sanitizeCaptchaMode(intent.getStringExtra("captcha_mode")?.takeIf { it.isNotEmpty() } ?: store.captchaMode.first()),
                             captchaSolveMethod = intent.getStringExtra("captcha_solve_method")?.takeIf { it.isNotEmpty() } ?: store.captchaSolveMethod.first(),
                             vkAuthMode = intent.getStringExtra("vk_auth_mode")?.takeIf { it.isNotEmpty() } ?: store.vkAuthMode.first(),
+                            vkAnonPath = sanitizeVkAnonPath(intent.getStringExtra("vk_anon_path")?.takeIf { it.isNotEmpty() } ?: store.vkAnonPath.first()),
                             detailedLogs = store.detailedLogs.first()
                         )
                         launch(Dispatchers.Main) {
@@ -142,6 +143,7 @@ class TunnelService : Service() {
                     captchaMode = sanitizeCaptchaMode(store.captchaMode.first()),
                     captchaSolveMethod = store.captchaSolveMethod.first(),
                     vkAuthMode = store.vkAuthMode.first(),
+                    vkAnonPath = sanitizeVkAnonPath(store.vkAnonPath.first()),
                     detailedLogs = store.detailedLogs.first()
                 )
                 if (params.peer.isNotEmpty() && params.vkHashes.isNotEmpty()) {
@@ -252,6 +254,13 @@ class TunnelService : Service() {
             "rjs" -> "rjs"
             "wv" -> "wv"
             else -> "auto"
+        }
+    }
+
+    private fun sanitizeVkAnonPath(path: String?): String {
+        return when (path?.lowercase()) {
+            "legacy" -> "legacy"
+            else -> "vkcalls"
         }
     }
 
