@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,8 +38,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -51,10 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -75,8 +69,6 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -153,14 +145,29 @@ fun SettingsTabContent(
     val savedListenPort by settingsStore.listenPort.collectAsStateWithLifecycle(initialValue = 9000)
 
     val tunnelRunning by TunnelManager.running.collectAsStateWithLifecycle()
+    val tunnelConnecting by TunnelManager.isConnecting.collectAsStateWithLifecycle()
+    val tunnelBusy = tunnelRunning || tunnelConnecting
+    var connectCancelArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(tunnelConnecting, tunnelRunning) {
+        connectCancelArmed = false
+        if (tunnelConnecting && !tunnelRunning) {
+            delay(2_500)
+            if (TunnelManager.isConnecting.value && !TunnelManager.running.value) {
+                connectCancelArmed = true
+            }
+        }
+    }
     val autoSwitchToLogs by settingsStore.autoSwitchToLogs.collectAsStateWithLifecycle(initialValue = true)
     val stopOnWifi by settingsStore.stopOnWifi.collectAsStateWithLifecycle(initialValue = false)
-    val showSpeedGraph by settingsStore.showSpeedGraph.collectAsStateWithLifecycle(initialValue = true)
     val detailedLogs by settingsStore.detailedLogs.collectAsStateWithLifecycle(initialValue = false)
     val updateCheckIntervalHours by settingsStore.updateCheckIntervalHours.collectAsStateWithLifecycle(
         initialValue = com.wdtt.client.DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
     )
     val includeBetaUpdates by settingsStore.includeBetaUpdates.collectAsStateWithLifecycle(initialValue = false)
+    val subscriptionAutoRefreshHours by settingsStore.subscriptionAutoRefreshHours.collectAsStateWithLifecycle(
+        initialValue = SettingsStore.DEFAULT_SUB_AUTO_REFRESH_HOURS
+    )
+    var subAutoRefreshMenuExpanded by remember { mutableStateOf(false) }
 
     val currentProfileId by settingsStore.currentProfileId.collectAsStateWithLifecycle(initialValue = "")
     val currentProfileName by settingsStore.currentProfileName.collectAsStateWithLifecycle(initialValue = "")
@@ -433,68 +440,11 @@ fun SettingsTabContent(
 
     val scrollState = rememberScrollState()
 
-    val speedHistory = remember { mutableStateListOf<Float>() }
-    var currentSpeedKbps by remember { mutableFloatStateOf(0f) }
-    var lastTraffic by remember { mutableDoubleStateOf(-1.0) }
-    var lastTime by remember { mutableLongStateOf(0L) }
-
-    LaunchedEffect(tunnelRunning) {
-        if (tunnelRunning) {
-            speedHistory.clear()
-            repeat(30) { speedHistory.add(0f) }
-            lastTraffic = -1.0
-            lastTime = System.currentTimeMillis()
-            currentSpeedKbps = 0f
-            
-            while (true) {
-                delay(1000)
-                val now = System.currentTimeMillis()
-                val statsText = TunnelManager.stats.value
-                val currentTraffic = parseTrafficMb(statsText)
-                
-                if (currentTraffic != null) {
-                    if (lastTraffic >= 0.0) {
-                        val deltaTrafficMb = currentTraffic - lastTraffic
-                        if (deltaTrafficMb > 0.0) {
-                            val deltaTimeSec = (now - lastTime) / 1000.0
-                            if (deltaTimeSec > 0) {
-                                val rawSpeed = ((deltaTrafficMb * 1024.0) / deltaTimeSec).toFloat()
-                                currentSpeedKbps = rawSpeed
-                                lastTraffic = currentTraffic
-                                lastTime = now
-                            }
-                        } else {
-                            if (now - lastTime > 3800) {
-                                currentSpeedKbps = 0f
-                            }
-                        }
-                    } else {
-                        lastTraffic = currentTraffic
-                        lastTime = now
-                    }
-                }
-                
-                var speedPoint = currentSpeedKbps
-                if (speedPoint > 2f) {
-                    val oscillation = (Math.random() * 0.12 - 0.06).toFloat()
-                    speedPoint = (speedPoint + speedPoint * oscillation).coerceAtLeast(0f)
-                }
-                if (speedHistory.size >= 30) speedHistory.removeAt(0)
-                speedHistory.add(speedPoint)
-            }
-        } else {
-            currentSpeedKbps = 0f
-            speedHistory.clear()
-        }
-    }
-
     val isPeerValid = peerInput.isNotBlank()
     val isHashesValid = combinedHashes.isNotBlank()
     val isValid = isPeerValid && isHashesValid && savedConnectionPassword.isNotBlank() && !hasInputHashErrors
     val effectiveServerDtlsPort = if (manualPortsEnabled) serverDtlsPortInput.toIntOrNull()?.coerceIn(1, 65535) ?: 56000 else 56000
     val effectiveLocalPort = if (manualPortsEnabled) portInput.toIntOrNull()?.coerceIn(1, 65535) ?: 9000 else 9000
-    var pendingStartAfterVpnPermission by remember { mutableStateOf(false) }
-
     fun startTunnelService() {
         val effectiveCaptchaMode = if (autoCaptchaEnabled) "auto" else if (useWVCaptcha) "wv" else "rjs"
         val effectiveCaptchaSolveMethod = if (!autoCaptchaEnabled && effectiveCaptchaMode == "wv" && isManualMode) "manual" else "auto"
@@ -505,7 +455,8 @@ fun SettingsTabContent(
         val host = PeerAddress.host(peerInput.trim())
         val peerForTunnel = PeerAddress.ensurePort(host, effectiveServerDtlsPort)
         saveJob?.cancel()
-        scope.launch {
+        // Не rememberCoroutineScope: уход на вкладку «Логи» отменяет Compose-scope и ломает старт.
+        TunnelManager.scope.launch {
             val effectiveVkAnonPath = SettingsStore.resolveVkAnonPath(context)
             settingsStore.save(
                 host, combinedHashes, "",
@@ -536,27 +487,24 @@ fun SettingsTabContent(
         }
     }
 
-    val vpnPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (pendingStartAfterVpnPermission) {
-            pendingStartAfterVpnPermission = false
-            if (VpnService.prepare(context) == null) {
-                startTunnelService()
-            } else {
-                Toast.makeText(context, "VPN-разрешение не выдано", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     fun requestVpnAndStart() {
         (context as? com.wdtt.client.MainActivity)?.requestNotificationPermissionIfNeeded()
-        val vpnIntent = VpnService.prepare(context)
-        if (vpnIntent != null) {
-            pendingStartAfterVpnPermission = true
-            vpnPermissionLauncher.launch(vpnIntent)
-        } else {
+        TunnelManager.beginConnecting()
+        val proceed = {
+            // Переключение на «Логи» только когда VPN уже выдан — иначе launcher вкладки уничтожается.
+            if (autoSwitchToLogs) {
+                onConnectRequested()
+            }
             startTunnelService()
+        }
+        val activity = context as? com.wdtt.client.MainActivity
+        if (activity != null) {
+            activity.prepareVpnThen(proceed)
+        } else if (VpnService.prepare(context) == null) {
+            proceed()
+        } else {
+            TunnelManager.cancelConnectingIfNeeded()
+            Toast.makeText(context, "VPN-разрешение недоступно", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -832,34 +780,79 @@ fun SettingsTabContent(
                             }
                         )
                     }
-                    
+
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "График скорости",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Отображать график скорости на вкладке туннеля при активном соединении",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = showSpeedGraph,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveShowSpeedGraph(enabled) }
-                            }
-                        )
+                    val subRefreshLabel = when (subscriptionAutoRefreshHours) {
+                        SettingsStore.SUB_AUTO_REFRESH_NEVER -> "Выкл"
+                        SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN -> "При каждом открытии"
+                        6 -> "Каждые 6 ч"
+                        24 -> "Каждые 24 ч"
+                        else -> "Каждые 12 ч"
                     }
-
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Автообновление подписок",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            "Подтягивать профили с сервера подписки при открытии приложения (когда туннель выключен)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ExposedDropdownMenuBox(
+                            expanded = subAutoRefreshMenuExpanded,
+                            onExpandedChange = { subAutoRefreshMenuExpanded = !subAutoRefreshMenuExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = subRefreshLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                label = { Text("Интервал") },
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = subAutoRefreshMenuExpanded)
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            ExposedDropdownMenu(
+                                expanded = subAutoRefreshMenuExpanded,
+                                onDismissRequest = { subAutoRefreshMenuExpanded = false }
+                            ) {
+                                listOf(
+                                    SettingsStore.SUB_AUTO_REFRESH_NEVER to "Выкл",
+                                    6 to "Каждые 6 ч",
+                                    SettingsStore.DEFAULT_SUB_AUTO_REFRESH_HOURS to "Каждые 12 ч",
+                                    24 to "Каждые 24 ч",
+                                    SettingsStore.SUB_AUTO_REFRESH_EVERY_OPEN to "При каждом открытии",
+                                ).forEach { (hours, title) ->
+                                    DropdownMenuItem(
+                                        text = { Text(title) },
+                                        onClick = {
+                                            subAutoRefreshMenuExpanded = false
+                                            scope.launch {
+                                                settingsStore.saveSubscriptionAutoRefreshHours(hours)
+                                            }
+                                        },
+                                        trailingIcon = {
+                                            if (subscriptionAutoRefreshHours == hours) {
+                                                Icon(
+                                                    Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Row(
@@ -1451,19 +1444,14 @@ fun SettingsTabContent(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-        // ═══ График скорости при активном туннеле ═══
-        androidx.compose.animation.AnimatedVisibility(
-            visible = tunnelRunning && showSpeedGraph,
-            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
-            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
-        ) {
-            SpeedGraphCard(speedHistory = speedHistory, currentSpeed = currentSpeedKbps)
-        }
-
         // ═══ Подключение — главное действие, сразу на экране ═══
         val tunnelSecretsMissing = savedConnectionPassword.isBlank()
         val buttonColor by animateColorAsState(
-            targetValue = if (tunnelRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            targetValue = when {
+                tunnelRunning -> MaterialTheme.colorScheme.error
+                tunnelConnecting && connectCancelArmed -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.primary
+            },
             animationSpec = tween(400),
             label = "btn_color"
         )
@@ -1586,18 +1574,23 @@ fun SettingsTabContent(
 
                 Button(
                     onClick = {
-                        if (tunnelRunning) {
-                            context.startService(
-                                Intent(context, TunnelService::class.java).apply { action = "STOP" }
-                            )
-                        } else {
-                            if (autoSwitchToLogs) {
-                                onConnectRequested()
+                        when {
+                            tunnelRunning || (tunnelConnecting && connectCancelArmed) -> {
+                                context.startService(
+                                    Intent(context, TunnelService::class.java).apply { action = "STOP" }
+                                )
                             }
-                            requestVpnAndStart()
+                            tunnelConnecting -> {
+                                // Grace: игнор, чтобы жест «Подключить» не превратился в «Отмена»
+                            }
+                            else -> {
+                                requestVpnAndStart()
+                            }
                         }
                     },
-                    enabled = (isValid && cooldownSeconds == 0) || tunnelRunning,
+                    enabled = (isValid && cooldownSeconds == 0 && !tunnelConnecting) ||
+                        tunnelRunning ||
+                        (tunnelConnecting && connectCancelArmed),
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
@@ -1608,13 +1601,18 @@ fun SettingsTabContent(
                     )
                 ) {
                     Icon(
-                        imageVector = if (tunnelRunning) Icons.Default.Stop else Icons.Default.PowerSettingsNew,
+                        imageVector = when {
+                            tunnelRunning || (tunnelConnecting && connectCancelArmed) -> Icons.Default.Stop
+                            else -> Icons.Default.PowerSettingsNew
+                        },
                         contentDescription = null,
                         modifier = Modifier.size(22.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = when {
+                            tunnelConnecting && !tunnelRunning && !connectCancelArmed -> "Подключение…"
+                            tunnelConnecting && !tunnelRunning -> "Отмена"
                             tunnelRunning -> "Остановить"
                             cooldownSeconds > 0 -> "Подождите ($cooldownSeconds)"
                             else -> "Подключить"
@@ -2485,11 +2483,6 @@ fun HashesDialog(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
-                        Text(
-                            "Создаёт новый групповой звонок через ваш аккаунт VK и подставляет хеш автоматически",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     } else {
                         Text(
                             "Для автогенерации хешей включите «Вход через аккаунт VK» на вкладке «Туннель» и войдите в VK",
@@ -2798,164 +2791,6 @@ fun SecretsDialog(
             }
         }
     }
-}
-
-// extension
-private fun androidx.compose.ui.graphics.Color.luminance(): Float {
-    val r = red
-    val g = green
-    val b = blue
-    return 0.2126f * r + 0.7152f * g + 0.0722f * b
-}
-
-@Composable
-private fun SpeedGraphCard(speedHistory: List<Float>, currentSpeed: Float) {
-    val colors = MaterialTheme.colorScheme
-    val isDark = colors.background.luminance() < 0.22f
-    val cardBg = if (isDark) colors.surface.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.5f)
-    val cardBorder = colors.outlineVariant.copy(alpha = if (isDark) 0.35f else 0.2f)
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = cardBg,
-        border = BorderStroke(1.dp, cardBorder),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Скорость:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant
-                    )
-                    Text(
-                        text = formatSpeed(currentSpeed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = colors.primary
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = colors.primaryContainer.copy(alpha = 0.4f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                      ) {
-                          Box(
-                              modifier = Modifier
-                                  .size(6.dp)
-                                  .clip(androidx.compose.foundation.shape.CircleShape)
-                                  .background(colors.primary)
-                          )
-                          Text(
-                              text = "LIVE",
-                              style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                              fontWeight = FontWeight.Bold,
-                              color = colors.primary
-                          )
-                      }
-                  }
-              }
-
-              Box(
-                  modifier = Modifier
-                      .fillMaxWidth()
-                      .height(44.dp)
-              ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val width = size.width
-                    val height = size.height
-                    
-                    if (speedHistory.size > 1) {
-                        val maxVal = speedHistory.maxOrNull()?.coerceAtLeast(10f) ?: 10f
-                        val stepX = width / (speedHistory.size - 1)
-                        
-                        val path = Path()
-                        path.moveTo(0f, height - (speedHistory[0] / maxVal) * height)
-                        
-                        for (i in 1 until speedHistory.size) {
-                            val x = i * stepX
-                            val y = height - (speedHistory[i] / maxVal) * height
-                            val prevX = (i - 1) * stepX
-                            val prevY = height - (speedHistory[i - 1] / maxVal) * height
-                            
-                            val cx1 = prevX + stepX / 2f
-                            val cy1 = prevY
-                            val cx2 = prevX + stepX / 2f
-                            val cy2 = y
-                            
-                            path.cubicTo(cx1, cy1, cx2, cy2, x, y)
-                        }
-                        
-                        val fillPath = Path().apply {
-                            addPath(path)
-                            lineTo(width, height)
-                            lineTo(0f, height)
-                            close()
-                        }
-                        
-                        drawPath(
-                            path = fillPath,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    colors.primary.copy(alpha = 0.24f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        
-                        drawPath(
-                            path = path,
-                            color = colors.primary,
-                            style = Stroke(
-                                width = 2.5.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
-                        )
-                        
-                        val lastY = height - (speedHistory.last() / maxVal) * height
-                        drawCircle(
-                            color = colors.primary,
-                            radius = 4.5.dp.toPx(),
-                            center = Offset(width, lastY)
-                        )
-                        drawCircle(
-                            color = colors.primary.copy(alpha = 0.35f),
-                            radius = 9.dp.toPx(),
-                            center = Offset(width, lastY)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatSpeed(kbps: Float): String {
-    return when {
-        kbps >= 1024f -> String.format("%.2f МБ/с", kbps / 1024f)
-        else -> String.format("%.1f КБ/с", kbps)
-    }
-}
-
-private fun parseTrafficMb(stats: String): Double? {
-    val match = Regex("Трафик:\\s*([\\d.,]+)").find(stats)
-    return match?.groupValues?.getOrNull(1)?.replace(",", ".")?.toDoubleOrNull()
 }
 
 @Composable

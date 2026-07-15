@@ -105,13 +105,10 @@ class TunnelService : Service() {
                             detailedLogs = store.detailedLogs.first()
                         )
                         launch(Dispatchers.Main) {
-                            if (intent.action == "START_FORCED") {
-                                TunnelManager.showBlockerWarning.value = false
-                                startTunnel(params, forceStart = true)
-                            } else {
-                                startTunnel(params, forceStart = false)
-                            }
+                            startTunnel(params, forceStart = intent.action == "START_FORCED")
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         launch(Dispatchers.Main) { stopTunnel() }
                     }
@@ -177,6 +174,8 @@ class TunnelService : Service() {
                         stopTunnel()
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {
                     stopTunnel()
@@ -195,7 +194,7 @@ class TunnelService : Service() {
         // Вызываем всегда — дёшево, а WebView создаётся на лету при каждом запросе капчи
         CaptchaWebViewManager.onTunnelStart(applicationContext)
 
-        TunnelManager.start(this, params, forceStart)
+        TunnelManager.start(this, params, isSwitching = false, forceStart = forceStart)
         startStatsUpdater()
     }
 
@@ -283,10 +282,17 @@ class TunnelService : Service() {
         wasOnWifi = isUnderlyingWifiActive()
     }
 
+    /**
+     * Wi‑Fi для stop-on-Wi‑Fi: только валидированная сеть.
+     * Иначе на OnePlus Wi‑Fi уже в activeNetworks до переключения трафика.
+     */
     private fun isUnderlyingWifiActive(): Boolean {
         val cm = connectivityManager ?: return false
         return activeNetworks.any { network ->
-            cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val caps = cm.getNetworkCapabilities(network) ?: return@any false
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         }
     }
 
@@ -337,11 +343,14 @@ class TunnelService : Service() {
         val transitionedToWifi = nowOnWifi && !wasOnWifi
         wasOnWifi = nowOnWifi
 
+        // Только переход «не Wi‑Fi → валидированный Wi‑Fi».
+        // Старт уже на Wi‑Fi не гасим — иначе нельзя пользоваться VPN дома.
         if (transitionedToWifi && TunnelManager.running.value && !isTunnelPaused) {
             TunnelManager.scope.launch {
                 val stopOnWifi = SettingsStore(applicationContext).stopOnWifi.first()
                 if (stopOnWifi) {
                     Log.d("TunnelService", "Подключились к Wi-Fi — отключаем туннель по настройке")
+                    TunnelManager.addNetworkLog("[СЕТЬ] Wi‑Fi: туннель отключён (опция «Отключать на Wi‑Fi»)")
                     launch(Dispatchers.Main) { stopTunnel() }
                     return@launch
                 }

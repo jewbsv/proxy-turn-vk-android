@@ -145,13 +145,32 @@ fun DeployTab() {
                 Toast.makeText(context, "Не удалось прочитать файл ключа", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            if (!content.contains("PRIVATE KEY")) {
-                Toast.makeText(context, "Файл не похож на приватный SSH-ключ", Toast.LENGTH_LONG).show()
+            val normalized = content.trim()
+            val looksLikePrivateKey =
+                normalized.contains("BEGIN OPENSSH PRIVATE KEY") ||
+                    normalized.contains("BEGIN RSA PRIVATE KEY") ||
+                    normalized.contains("BEGIN EC PRIVATE KEY") ||
+                    normalized.contains("BEGIN PRIVATE KEY") ||
+                    (normalized.contains("PRIVATE KEY") && normalized.contains("BEGIN"))
+            if (!looksLikePrivateKey) {
+                Toast.makeText(context, "Нужен приватный ключ (не .pub). OpenSSH или PEM.", Toast.LENGTH_LONG).show()
                 return@launch
             }
-            val keyName = uri.lastPathSegment?.substringAfterLast('/') ?: "ssh-key"
-            settingsStore.saveDeploySshPrivateKey(content.trim(), keyName)
-            Toast.makeText(context, "SSH-ключ загружен", Toast.LENGTH_SHORT).show()
+            val rawName = uri.lastPathSegment?.substringAfterLast('/') ?: "ssh-key"
+            val keyName = rawName
+                .substringAfterLast(':')
+                .substringAfterLast('%')
+                .replace("%2F", "/", ignoreCase = true)
+                .substringAfterLast('/')
+                .ifBlank { "ssh-key" }
+            runCatching {
+                settingsStore.saveDeploySshPrivateKey(normalized, keyName)
+            }.onFailure {
+                Toast.makeText(context, "Не удалось сохранить ключ: ${it.message}", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            sshUseKey = true
+            Toast.makeText(context, "SSH-ключ сохранён: $keyName", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -223,7 +242,7 @@ fun DeployTab() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = WDTTColors.connected)
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Деплой успешно завершен ($successCountdown)",
                         color = WDTTColors.connected,
@@ -249,9 +268,14 @@ fun DeployTab() {
             )
         ) {
             Icon(Icons.Default.Key, null, Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                if (savedManualPorts) "Секреты (BOT, Пароли, Порты)" else "Секреты (BOT, Пароли)",
+                when {
+                    deploySecretsMissing && savedManualPorts -> "Секреты — укажите пароль WDTT, порты"
+                    deploySecretsMissing -> "Секреты — нужен пароль WDTT"
+                    savedManualPorts -> "Секреты (BOT, Пароли, Порты)"
+                    else -> "Секреты (BOT, Пароли)"
+                },
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -314,7 +338,7 @@ fun DeployTab() {
                 } else {
                     Icon(Icons.Default.CloudUpload, null, Modifier.size(18.dp))
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(if (isDeploying) "Установка..." else "Установить", fontWeight = FontWeight.Bold)
             }
 
@@ -332,7 +356,7 @@ fun DeployTab() {
                 enabled = !isDeploying && ip.isNotBlank() && hasSshCredentials
             ) {
                 Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text("Удалить", fontWeight = FontWeight.Bold)
             }
         }
@@ -348,33 +372,37 @@ fun DeployTab() {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                value = ip,
-                onValueChange = {
-                    ip = it.filter { c -> !c.isWhitespace() }
-                    persistDeployFields()
-                },
-                label = { Text("IP сервера или домен (без порта)") },
-                placeholder = { Text("1.2.3.4 (без порта)") },
-                singleLine = true,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                enabled = !isDeploying,
-            )
-
-            OutlinedTextField(
-                value = login,
-                onValueChange = {
-                    login = it.filter { c -> !c.isWhitespace() }
-                    persistDeployFields()
-                },
-                label = { Text("Логин") },
-                placeholder = { Text("root") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                enabled = !isDeploying,
-            )
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = ip,
+                    onValueChange = {
+                        ip = it.filter { c -> !c.isWhitespace() }
+                        persistDeployFields()
+                    },
+                    label = { Text("IP / домен") },
+                    placeholder = { Text("1.2.3.4") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    enabled = !isDeploying,
+                )
+                OutlinedTextField(
+                    value = login,
+                    onValueChange = {
+                        login = it.filter { c -> !c.isWhitespace() }
+                        persistDeployFields()
+                    },
+                    label = { Text("Логин") },
+                    placeholder = { Text("root") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(16.dp),
+                    enabled = !isDeploying,
+                )
+            }
 
             Text(
                 "Вход на сервер",
@@ -462,7 +490,7 @@ fun DeployTab() {
                         enabled = !isDeploying,
                     ) {
                         Icon(Icons.Default.Key, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             if (savedSshPrivateKey.isNotBlank()) "Сменить ключ" else "Выбрать ключ",
                             fontWeight = FontWeight.SemiBold
@@ -482,19 +510,52 @@ fun DeployTab() {
                         }
                     }
                 }
-                if (savedSshPrivateKey.isNotBlank()) {
-                    Text(
-                        text = "Ключ: ${savedSshKeyName.ifBlank { "загружен" }}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium,
-                    )
-                } else {
-                    Text(
-                        text = "Выберите файл приватного ключа (OpenSSH или PEM)",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (savedSshPrivateKey.isNotBlank() || savedSshKeyName.isNotBlank()) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = if (savedSshPrivateKey.isNotBlank()) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.Key
+                            },
+                            contentDescription = null,
+                            tint = if (savedSshPrivateKey.isNotBlank()) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = when {
+                                savedSshPrivateKey.isNotBlank() ->
+                                    "Ключ загружен: ${savedSshKeyName.ifBlank { "private key" }}"
+                                savedSshKeyName.isNotBlank() ->
+                                    "Ключ «$savedSshKeyName» сохранён с ошибкой — выберите файл снова"
+                                else ->
+                                    "Ключ ещё не выбран (нужен приватный файл, не .pub)"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = if (savedSshPrivateKey.isNotBlank()) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
                 }
                 OutlinedTextField(
                     value = sshKeyPassphrase,
@@ -760,28 +821,37 @@ private class SSHClient(private val session: Session, private val pass: String) 
 }
 
 private fun createSSHSession(host: String, user: String, port: Int, auth: SshAuth): Session {
-    val jsch = JSch()
-    if (auth.usesKey) {
-        val keyBytes = auth.privateKey.toByteArray(Charsets.UTF_8)
-        val passphraseBytes = auth.keyPassphrase.takeIf { it.isNotBlank() }?.toByteArray(Charsets.UTF_8)
-        jsch.addIdentity("deploy-key", keyBytes, null, passphraseBytes)
+    val authMode = if (auth.usesKey) "SSH-ключ" else "пароль"
+    TunnelManager.addDeployLog("SSH $user@$host:$port ($authMode)…")
+    try {
+        val jsch = JSch()
+        if (auth.usesKey) {
+            val keyBytes = auth.privateKey.toByteArray(Charsets.UTF_8)
+            val passphraseBytes = auth.keyPassphrase.takeIf { it.isNotBlank() }?.toByteArray(Charsets.UTF_8)
+            jsch.addIdentity("deploy-key", keyBytes, null, passphraseBytes)
+        }
+        val session = jsch.getSession(user, host, port)
+        if (!auth.usesKey) {
+            session.setPassword(auth.password)
+        }
+        session.setConfig(Properties().apply {
+            put("StrictHostKeyChecking", "no")
+            put("ServerAliveInterval", "10")
+            put("ServerAliveCountMax", "6")
+            put("ConnectTimeout", "15000")
+            put(
+                "PreferredAuthentications",
+                if (auth.usesKey) "publickey" else "password,keyboard-interactive,publickey"
+            )
+        })
+        session.connect(20000)
+        TunnelManager.addDeployLog("SSH подключено")
+        return session
+    } catch (e: Exception) {
+        val msg = e.message?.take(160) ?: e.javaClass.simpleName
+        DeployManager.writeError("SSH не удалось: $msg")
+        throw e
     }
-    val session = jsch.getSession(user, host, port)
-    if (!auth.usesKey) {
-        session.setPassword(auth.password)
-    }
-    session.setConfig(Properties().apply {
-        put("StrictHostKeyChecking", "no")
-        put("ServerAliveInterval", "10")
-        put("ServerAliveCountMax", "6")
-        put("ConnectTimeout", "15000")
-        put(
-            "PreferredAuthentications",
-            if (auth.usesKey) "publickey" else "password,keyboard-interactive,publickey"
-        )
-    })
-    session.connect(20000)
-    return session
 }
 
 private fun shellQuote(value: String): String {
@@ -1201,7 +1271,7 @@ fun UninstallConfirmDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
                         )
                     ) {
                         Icon(Icons.Default.Delete, null, Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text("Удалить", fontWeight = FontWeight.Bold)
                     }
                 }

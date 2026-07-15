@@ -97,6 +97,37 @@ class MainActivity : ComponentActivity() {
         checkAndRequestBattery()
     }
 
+    /**
+     * VPN consent живёт на Activity, а не во вкладке Settings:
+     * иначе при auto-switch на «Логи» launcher снимается и после «Разрешить» старт зависает.
+     */
+    @Volatile
+    private var pendingAfterVpnGranted: (() -> Unit)? = null
+
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        val cont = pendingAfterVpnGranted
+        pendingAfterVpnGranted = null
+        if (cont == null) return@registerForActivityResult
+        if (android.net.VpnService.prepare(this) == null) {
+            cont()
+        } else {
+            TunnelManager.cancelConnectingIfNeeded()
+            Toast.makeText(this, "VPN-разрешение не выдано", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun prepareVpnThen(onGranted: () -> Unit) {
+        val vpnIntent = android.net.VpnService.prepare(this)
+        if (vpnIntent != null) {
+            pendingAfterVpnGranted = onGranted
+            vpnPermissionLauncher.launch(vpnIntent)
+        } else {
+            onGranted()
+        }
+    }
+
     companion object {
         var activeActivities = 0
         var isForeground: Boolean
@@ -256,7 +287,6 @@ fun MainScreen(
 ) {
     val unreadErrors by TunnelManager.unreadErrorCount.collectAsStateWithLifecycle()
     val tunnelRunning by TunnelManager.running.collectAsStateWithLifecycle()
-    val showBlockerWarning by TunnelManager.showBlockerWarning.collectAsStateWithLifecycle()
     val openAppSettingsRequest by TunnelManager.openAppSettingsRequest.collectAsStateWithLifecycle()
     val hasSeenWelcomeDialog by settingsStore.hasSeenWelcomeDialog.collectAsStateWithLifecycle(initialValue = true)
     val view = LocalView.current
@@ -287,8 +317,8 @@ fun MainScreen(
         if (selectedTab == 4) TunnelManager.clearUnreadErrors()
     }
 
-    LaunchedEffect(tunnelRunning, autoSwitchToLogs, pendingSwitchToLogs) {
-        if (tunnelRunning && autoSwitchToLogs && pendingSwitchToLogs) {
+    LaunchedEffect(pendingSwitchToLogs, autoSwitchToLogs) {
+        if (pendingSwitchToLogs && autoSwitchToLogs) {
             pendingSwitchToLogs = false
             selectedTab = 4
         }
@@ -330,6 +360,51 @@ fun MainScreen(
             supportShownFor < SettingsStore.SUPPORT_NOTICE_VERSION_CODE
         ) {
             showSupportNotice = true
+        }
+    }
+
+    // Тихое автообновление подписок при открытии (не во время туннеля).
+    LaunchedEffect(Unit) {
+        val intervalHours = settingsStore.subscriptionAutoRefreshHours.first()
+        if (intervalHours == SettingsStore.SUB_AUTO_REFRESH_NEVER) return@LaunchedEffect
+        if (TunnelManager.running.value) return@LaunchedEffect
+
+        val profilesStore = ProfilesStore(context)
+        val result = runCatching {
+            profilesStore.autoRefreshSubscriptionsIfDue(intervalHours)
+        }.getOrElse {
+            Log.w("WDTT", "Subscription auto-refresh failed: ${it.message}")
+            null
+        } ?: return@LaunchedEffect
+
+        if (result.refreshedOk == 0 && result.failed == 0) return@LaunchedEffect
+
+        Log.i(
+            "WDTT",
+            "Subscription auto-refresh: ok=${result.refreshedOk} fail=${result.failed} skipped=${result.skippedFresh}"
+        )
+        when {
+            result.failed > 0 && result.refreshedOk == 0 -> {
+                Toast.makeText(
+                    context,
+                    "Не удалось обновить подписки",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            result.failed > 0 -> {
+                Toast.makeText(
+                    context,
+                    "Подписки: обновлено ${result.refreshedOk}, ошибок ${result.failed}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            result.refreshedOk > 0 -> {
+                Toast.makeText(
+                    context,
+                    "Подписки обновлены (${result.refreshedOk})",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
@@ -640,54 +715,6 @@ fun MainScreen(
         SupportNoticeDialog(
             versionName = BuildConfig.VERSION_NAME,
             onDismiss = { dismissSupportNotice() },
-        )
-    }
-
-    if (showBlockerWarning) {
-        var dontShowAgain by rememberSaveable { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { TunnelManager.showBlockerWarning.value = false },
-            title = { Text("Внимание", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Не используйте приложение, если белые списки не включены, так как это негативно влияет на способ обхода.")
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { dontShowAgain = !dontShowAgain }
-                    ) {
-                        Checkbox(
-                            checked = dontShowAgain,
-                            onCheckedChange = { dontShowAgain = it }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Больше не показывать", style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { 
-                        TunnelManager.showBlockerWarning.value = false
-                        scope.launch {
-                            settingsStore.saveHideBlockerWarning(dontShowAgain)
-                        }
-                        context.startService(Intent(context, TunnelService::class.java).apply {
-                            action = "START_FORCED"
-                        })
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Всё равно подключиться", color = MaterialTheme.colorScheme.onError)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { TunnelManager.showBlockerWarning.value = false }) {
-                    Text("Отмена")
-                }
-            },
-            shape = RoundedCornerShape(24.dp)
         )
     }
 }
