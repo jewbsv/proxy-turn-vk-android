@@ -1103,29 +1103,6 @@ object TunnelManager {
         ManlCaptchaWebViewManager.cancelCaptcha()
     }
 
-    // Suspend-версия: гарантирует что процесс мёртв и UDP-порт свободен
-    suspend fun stopAndWait() {
-        saveRemainingTraffic()
-        startJob?.cancel()
-        startJob = null
-        try {
-            VkAuthWebViewManager.notifyCancelled()
-        } catch (_: Exception) {
-        }
-        val port = currentParams?.port ?: 9000
-        withContext(Dispatchers.Main) {
-            wgHelper?.stopTunnel()
-        }
-        withContext(Dispatchers.IO) {
-            ensureTransportStopped(port)
-            markRunning(false)
-            isConnecting.value = false
-            activeWorkers.value = 0
-            currentParams = null
-            ManlCaptchaWebViewManager.cancelCaptcha()
-        }
-    }
-
     fun reloadWireGuard() {
         if (running.value) {
             scope.launch {

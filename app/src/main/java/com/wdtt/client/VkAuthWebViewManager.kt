@@ -1,7 +1,6 @@
 package com.wdtt.client
 
 import android.annotation.SuppressLint
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -25,8 +24,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.net.http.SslError
 import android.os.Message
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -851,13 +848,6 @@ object VkAuthWebViewManager {
             setSupportMultipleWindows(true)
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             userAgentString = authUserAgent(context, loginAttempt)
-        }
-        try {
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-                @Suppress("DEPRECATION")
-                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(webView.settings, emptySet())
-            }
-        } catch (_: Exception) {
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
     }

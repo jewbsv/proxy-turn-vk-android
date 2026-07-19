@@ -111,16 +111,6 @@ type captchaV2Session struct {
 	variedDeviceJSON string
 }
 
-func solveVkCaptchaV2(
-	ctx context.Context,
-	captchaErr *VkCaptchaError,
-	client tlsclient.HttpClient,
-	profile Profile,
-	savedProfile *SavedProfile,
-) (string, error) {
-	return solveVkCaptchaV2Attempts(ctx, captchaErr, client, profile, savedProfile, captchaV2MaxAttempts)
-}
-
 func solveVkCaptchaV2Attempts(
 	ctx context.Context,
 	captchaErr *VkCaptchaError,

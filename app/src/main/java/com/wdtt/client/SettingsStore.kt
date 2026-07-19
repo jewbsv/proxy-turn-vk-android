@@ -51,8 +51,6 @@ class SettingsStore(context: Context) {
         private val NO_DTLS = booleanPreferencesKey("no_dtls")
         private val NO_DNS = booleanPreferencesKey("no_dns")
 
-        private val USER_AGENT = stringPreferencesKey("user_agent")
-
         private val DEPLOY_IP = stringPreferencesKey("deploy_ip")
         private val DEPLOY_LOGIN = stringPreferencesKey("deploy_login")
         private val DEPLOY_PASSWORD = stringPreferencesKey("deploy_password")
@@ -79,11 +77,6 @@ class SettingsStore(context: Context) {
         private val DEPLOY_ADMIN_ID_ENCRYPTED = stringPreferencesKey("deploy_admin_id_encrypted")
         private val DEPLOY_BOT_TOKEN = stringPreferencesKey("deploy_bot_token")
         private val DEPLOY_BOT_TOKEN_ENCRYPTED = stringPreferencesKey("deploy_bot_token_encrypted")
-
-        // ═══ Proxy Mode ═══
-        private val PROXY_MODE = stringPreferencesKey("proxy_mode") // "tun" or "socks5"
-        private val PROXY_HOST = stringPreferencesKey("proxy_host")
-        private val PROXY_PORT = intPreferencesKey("proxy_port")
 
         // ═══ Captcha Solve Mode ═══
         private val CAPTCHA_MODE = stringPreferencesKey("captcha_mode") // "auto", "wv", or "rjs"
@@ -122,7 +115,6 @@ class SettingsStore(context: Context) {
         private val UPDATE_DIALOG_LAST_ACTION = stringPreferencesKey("update_dialog_last_action")
         private val UPDATE_DIALOG_LAST_ACTION_AT = longPreferencesKey("update_dialog_last_action_at")
         private val INCLUDE_BETA_UPDATES = booleanPreferencesKey("include_beta_updates")
-        private val CHANGELOG_SHOWN_VERSION_CODE = intPreferencesKey("changelog_shown_version_code")
         private val SUPPORT_NOTICE_SHOWN_VERSION_CODE = intPreferencesKey("support_notice_shown_version_code")
 
         /** versionCode, при первом запуске которого показывается экран поддержки (донат + канал). */
@@ -138,8 +130,6 @@ class SettingsStore(context: Context) {
         const val SUB_AUTO_REFRESH_NEVER = -1
         const val SUB_AUTO_REFRESH_EVERY_OPEN = 0
         const val DEFAULT_SUB_AUTO_REFRESH_HOURS = 12
-
-        private val HIDE_BLOCKER_WARNING = booleanPreferencesKey("hide_blocker_warning")
 
         private val HAS_SEEN_WELCOME_DIALOG = booleanPreferencesKey("has_seen_welcome_dialog")
         private val LAST_SEEN_VERSION_CODE = intPreferencesKey("last_seen_version_code")
@@ -313,7 +303,6 @@ class SettingsStore(context: Context) {
     val serverWgPort: Flow<Int> = dataStore.data.map { it[SERVER_WG_PORT] ?: 56001 }
     val sni: Flow<String> = dataStore.data.map { it[SNI] ?: "" }
     val noDns: Flow<Boolean> = dataStore.data.map { it[NO_DNS] ?: false }
-    val userAgent: Flow<String> = dataStore.data.map { it[USER_AGENT] ?: "" }
 
     val deployIp: Flow<String> = dataStore.data.map { it[DEPLOY_IP] ?: "" }
     val deployLogin: Flow<String> = dataStore.data.map { it[DEPLOY_LOGIN] ?: "" }
@@ -349,11 +338,6 @@ class SettingsStore(context: Context) {
     val deployBotToken: Flow<String> = dataStore.data.map {
         readSecret(it, DEPLOY_BOT_TOKEN_ENCRYPTED, DEPLOY_BOT_TOKEN)
     }
-
-    // ═══ Proxy Mode ═══
-    val proxyMode: Flow<String> = appContext.dataStore.data.map { it[PROXY_MODE] ?: "tun" }
-    val proxyHost: Flow<String> = dataStore.data.map { it[PROXY_HOST] ?: "127.0.0.1" }
-    val proxyPort: Flow<Int> = dataStore.data.map { it[PROXY_PORT] ?: 1080 }
 
     // ═══ Captcha Solve Mode ═══
     val captchaMode: Flow<String> = dataStore.data.map { it[CAPTCHA_MODE] ?: "auto" }
@@ -404,7 +388,6 @@ class SettingsStore(context: Context) {
     val updateDialogLastAction: Flow<String> = dataStore.data.map { it[UPDATE_DIALOG_LAST_ACTION] ?: "" }
     val updateDialogLastActionAt: Flow<Long> = dataStore.data.map { it[UPDATE_DIALOG_LAST_ACTION_AT] ?: 0L }
     val includeBetaUpdates: Flow<Boolean> = dataStore.data.map { it[INCLUDE_BETA_UPDATES] ?: false }
-    val changelogShownVersionCode: Flow<Int> = dataStore.data.map { it[CHANGELOG_SHOWN_VERSION_CODE] ?: 0 }
     val supportNoticeShownVersionCode: Flow<Int> = dataStore.data.map { it[SUPPORT_NOTICE_SHOWN_VERSION_CODE] ?: 0 }
 
     // ═══ Поведение ═══
@@ -414,8 +397,6 @@ class SettingsStore(context: Context) {
     val subscriptionAutoRefreshHours: Flow<Int> = dataStore.data.map {
         it[SUB_AUTO_REFRESH_HOURS] ?: DEFAULT_SUB_AUTO_REFRESH_HOURS
     }
-
-    val hideBlockerWarning: Flow<Boolean> = dataStore.data.map { it[HIDE_BLOCKER_WARNING] ?: false }
 
     suspend fun saveAutoSwitchToLogs(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[AUTO_SWITCH_TO_LOGS] = enabled }
@@ -436,10 +417,6 @@ class SettingsStore(context: Context) {
 
     suspend fun saveSortProfilesByPing(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[SORT_PROFILES_BY_PING] = enabled }
-    }
-
-    suspend fun saveHideBlockerWarning(hide: Boolean) {
-        dataStore.edit { prefs -> prefs[HIDE_BLOCKER_WARNING] = hide }
     }
 
     suspend fun saveThemeMode(mode: String) {
@@ -487,12 +464,6 @@ class SettingsStore(context: Context) {
         }
     }
 
-    suspend fun saveChangelogShownVersionCode(versionCode: Int) {
-        dataStore.edit { prefs ->
-            prefs[CHANGELOG_SHOWN_VERSION_CODE] = versionCode
-        }
-    }
-
     suspend fun saveSupportNoticeShownVersionCode(versionCode: Int) {
         dataStore.edit { prefs ->
             prefs[SUPPORT_NOTICE_SHOWN_VERSION_CODE] = versionCode
@@ -537,8 +508,8 @@ class SettingsStore(context: Context) {
                 .filter { it.isNotBlank() }
                 .distinct()
                 .joinToString(",")
-                
-            val storedVkHashes = (prefs[VK_HASHES] ?: "").split(Regex("[,\\s\\n]+"))
+
+            (prefs[VK_HASHES] ?: "").split(Regex("[,\\s\\n]+"))
                 .map { stripVkUrlStatic(it) }
                 .filter { it.isNotBlank() }
                 .distinct()
@@ -566,12 +537,6 @@ class SettingsStore(context: Context) {
             prefs[SERVER_DTLS_PORT] = serverDtlsPort
             prefs[SERVER_WG_PORT] = serverWgPort
             prefs[LISTEN_PORT] = listenPort
-        }
-    }
-
-    suspend fun saveUserAgent(ua: String) {
-        dataStore.edit { prefs ->
-            prefs[USER_AGENT] = ua
         }
     }
 
@@ -649,15 +614,6 @@ class SettingsStore(context: Context) {
         }
     }
 
-    // ═══ Сохранение proxy mode ═══
-    suspend fun saveProxyMode(mode: String, host: String, port: Int) {
-        dataStore.edit { prefs ->
-            prefs[PROXY_MODE] = mode
-            prefs[PROXY_HOST] = host
-            prefs[PROXY_PORT] = port
-        }
-    }
-
     // ═══ Сохранение режима обхода капчи ═══
     suspend fun saveCaptchaMode(mode: String) {
         dataStore.edit { prefs ->
@@ -683,10 +639,6 @@ class SettingsStore(context: Context) {
         dataStore.edit { prefs ->
             prefs[VK_ANON_PATH] = normalized
         }
-    }
-
-    suspend fun saveGoDnsPreset(preset: String) {
-        saveGoDns(preset, null)
     }
 
     suspend fun saveGoDns(preset: String, custom: String? = null, dohCustom: String? = null) {
@@ -716,8 +668,7 @@ class SettingsStore(context: Context) {
     }
 
     suspend fun resolveGoDnsArg(): String {
-        val preset = normalizeGoDnsPreset(goDnsPreset.first())
-        return when (preset) {
+        return when (val preset = normalizeGoDnsPreset(goDnsPreset.first())) {
             "custom" -> {
                 val servers = normalizeGoDnsServers(goDnsCustom.first())
                 if (servers.isNotEmpty()) "custom:$servers" else "yandex"
@@ -736,14 +687,6 @@ class SettingsStore(context: Context) {
             if (prefs[CAPTCHA_MODE] == "wv") {
                 prefs[CAPTCHA_SOLVE_METHOD] = method
             }
-        }
-    }
-
-    // ═══ Сохранение режима списка (ЧС/БС) ═══
-    suspend fun saveIsWhitelist(enabled: Boolean) {
-        dataStore.edit { prefs ->
-            prefs[IS_WHITELIST] = enabled
-            prefs[SPLIT_TUNNEL_WHITELIST_MIGRATED] = true
         }
     }
 

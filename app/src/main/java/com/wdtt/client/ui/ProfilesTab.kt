@@ -431,20 +431,6 @@ fun ProfilesTab(
         onImportHandled()
     }
 
-    fun refreshProfileDeviceStatus(profile: ConnectionProfile) {
-        val androidId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
-        val dtlsPort = if (savedManualPortsEnabled) savedServerDtlsPort else 56000
-        deviceStatuses = deviceStatuses + (profile.id to (deviceStatuses[profile.id] ?: ProfileDeviceStatus()).copy(isLoading = true))
-        scope.launch {
-            val status = fetchProfileStatus(profile.peer, dtlsPort, profile.password, androidId)
-            if (status != null) {
-                deviceStatuses = deviceStatuses + (profile.id to status)
-            } else {
-                deviceStatuses = deviceStatuses + (profile.id to ProfileDeviceStatus(isError = true))
-            }
-        }
-    }
-
     LaunchedEffect(profiles) {
         val androidId = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "unknown"
         val dtlsPort = if (savedManualPortsEnabled) savedServerDtlsPort else 56000
@@ -755,7 +741,7 @@ fun ProfilesTab(
             onDismissRequest = { scannedProfile = null },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.Download,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
@@ -799,7 +785,7 @@ fun ProfilesTab(
                             Row(
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text("⚠️", style = MaterialTheme.typography.bodyMedium)
                                 Text(
@@ -850,7 +836,7 @@ fun ProfilesTab(
             onDismissRequest = { scannedMultipleProfiles = null },
             icon = {
                 Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Filled.Folder,
+                    imageVector = Icons.Filled.Folder,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp)
@@ -970,8 +956,8 @@ fun ProfilesTab(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Info,
+                    Icon(
+                        imageVector = Icons.Default.Info,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
@@ -1117,11 +1103,11 @@ fun ProfilesTab(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                androidx.compose.material3.IconButton(
+                IconButton(
                     onClick = { showFormatsInfoDialog = true },
                     modifier = Modifier.size(24.dp)
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.Info,
                         contentDescription = "Справка",
                         tint = MaterialTheme.colorScheme.primary,
@@ -1131,37 +1117,37 @@ fun ProfilesTab(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
 
-                androidx.compose.material3.IconButton(
+                IconButton(
                     onClick = { pingAllProfiles(profiles) }
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.SignalCellularAlt,
                         contentDescription = "Проверить пинг",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
 
-                androidx.compose.material3.IconButton(
+                IconButton(
                     onClick = {
                         scope.launch { settingsStore.saveSortProfilesByPing(!sortByPing) }
                     },
                     modifier = Modifier.background(
-                        color = if (sortByPing) MaterialTheme.colorScheme.primaryContainer else androidx.compose.ui.graphics.Color.Transparent,
+                        color = if (sortByPing) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                         shape = androidx.compose.foundation.shape.CircleShape
                     )
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.Sort,
                         contentDescription = "Сортировать по пингу",
                         tint = if (sortByPing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                androidx.compose.foundation.layout.Box {
-                    androidx.compose.material3.IconButton(
+                Box {
+                    IconButton(
                         onClick = { showMoreMenu = true }
                     ) {
-                        androidx.compose.material3.Icon(
+                        Icon(
                             imageVector = Icons.Filled.MoreVert,
                             contentDescription = "Дополнительно",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1174,7 +1160,7 @@ fun ProfilesTab(
                         DropdownMenuItem(
                             text = { Text("Управление папками") },
                             leadingIcon = {
-                                androidx.compose.material3.Icon(
+                                Icon(
                                     Icons.Filled.Folder,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
@@ -1290,7 +1276,7 @@ fun ProfilesTab(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Filled.Folder,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
@@ -1323,8 +1309,8 @@ fun ProfilesTab(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.Icon(
-                                    imageVector = androidx.compose.material.icons.Icons.Default.Info,
+                                Icon(
+                                    imageVector = Icons.Default.Info,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
@@ -1355,11 +1341,11 @@ fun ProfilesTab(
                                         context.startActivity(intent)
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    colors = ButtonDefaults.buttonColors(
                                         containerColor = MaterialTheme.colorScheme.surface,
                                         contentColor = MaterialTheme.colorScheme.primary
                                     ),
-                                    elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     contentPadding = PaddingValues(vertical = 10.dp)
                                 ) {
@@ -1377,11 +1363,11 @@ fun ProfilesTab(
                                         context.startActivity(intent)
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    colors = ButtonDefaults.buttonColors(
                                         containerColor = MaterialTheme.colorScheme.surface,
                                         contentColor = MaterialTheme.colorScheme.primary
                                     ),
-                                    elevation = androidx.compose.material3.ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     contentPadding = PaddingValues(vertical = 10.dp)
                                 ) {
@@ -1590,8 +1576,8 @@ fun ProfilesTab(
                                     if (pingMs != null) {
                                         val color = when {
                                             pingMs < 0 -> MaterialTheme.colorScheme.error
-                                            pingMs < 700 -> androidx.compose.ui.graphics.Color(0xFF4CAF50)
-                                            pingMs < 1000 -> androidx.compose.ui.graphics.Color(0xFFFFA000)
+                                            pingMs < 700 -> Color(0xFF4CAF50)
+                                            pingMs < 1000 -> Color(0xFFFFA000)
                                             else -> MaterialTheme.colorScheme.error
                                         }
                                         Box(modifier = Modifier.size(6.dp).clip(androidx.compose.foundation.shape.CircleShape).background(color))
@@ -1698,7 +1684,7 @@ fun ProfilesTab(
                                             color = MaterialTheme.colorScheme.primary
                                         )
                                     } else {
-                                        androidx.compose.material3.Icon(
+                                        Icon(
                                             imageVector = Icons.Filled.SignalCellularAlt,
                                             contentDescription = "Проверить пинг",
                                             modifier = Modifier.size(16.dp)
@@ -1716,8 +1702,8 @@ fun ProfilesTab(
                                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 ) {
-                                    androidx.compose.material3.Icon(
-                                        androidx.compose.material.icons.Icons.Filled.Folder,
+                                    Icon(
+                                        Icons.Filled.Folder,
                                         contentDescription = "В папку...",
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1733,8 +1719,8 @@ fun ProfilesTab(
                                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 ) {
-                                    androidx.compose.material3.Icon(
-                                        androidx.compose.material.icons.Icons.Filled.Share,
+                                    Icon(
+                                        Icons.Filled.Share,
                                         contentDescription = "Поделиться",
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -1750,7 +1736,7 @@ fun ProfilesTab(
                                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 ) {
-                                    androidx.compose.material3.Icon(
+                                    Icon(
                                         Icons.Filled.Edit,
                                         contentDescription = "Изменить",
                                         modifier = Modifier.size(16.dp)
@@ -2041,7 +2027,7 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
                 val pass = parts[4]
                 val hash = parts.drop(5).joinToString(":")
                 return ConnectionProfile(
-                    id = java.util.UUID.randomUUID().toString(),
+                    id = UUID.randomUUID().toString(),
                     name = "WDTT $ip",
                     peer = "$ip:$dtlsPort",
                     vkHashes = hash,
@@ -2072,7 +2058,7 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
             val port = uri.getQueryParameter("port")?.toIntOrNull() ?: 9000
             val pass = uri.getQueryParameter("pass") ?: ""
             return ConnectionProfile(
-                id = java.util.UUID.randomUUID().toString(),
+                id = UUID.randomUUID().toString(),
                 name = name,
                 peer = peer,
                 vkHashes = hashes,
@@ -2098,7 +2084,7 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
 
     if (jsonStr.startsWith("{")) {
         try {
-            val jsonObj = org.json.JSONObject(jsonStr)
+            val jsonObj = JSONObject(jsonStr)
             val name = jsonObj.optString("name", "QR Профиль")
             val peer = jsonObj.getString("peer")
             val hashes = jsonObj.optString("hashes", jsonObj.optString("vkHashes", ""))
@@ -2106,7 +2092,7 @@ private fun parseQrConfig(rawText: String): ConnectionProfile? {
             val port = jsonObj.optInt("port", jsonObj.optInt("listenPort", 9000))
             val pass = jsonObj.optString("password", jsonObj.optString("pass", ""))
             return ConnectionProfile(
-                id = java.util.UUID.randomUUID().toString(),
+                id = UUID.randomUUID().toString(),
                 name = name,
                 peer = peer,
                 vkHashes = hashes,

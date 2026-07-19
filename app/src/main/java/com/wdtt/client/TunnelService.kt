@@ -121,8 +121,8 @@ class TunnelService : Service() {
                 acquireWakeLock()
             }
             "DEPLOY_CANCEL" -> {
-                com.wdtt.client.DeployManager.writeError("[!] ❌ Установка отменена пользователем")
-                com.wdtt.client.DeployManager.stopDeploy("error: Отменена пользователем")
+                DeployManager.writeError("[!] ❌ Установка отменена пользователем")
+                DeployManager.stopDeploy("error: Отменена пользователем")
                 stopForeground(STOP_FOREGROUND_REMOVE)
             }
             "DEPLOY_STOP" -> {
@@ -216,7 +216,7 @@ class TunnelService : Service() {
     }
 
     private fun setupNetworkCallback() {
-        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         activeNetworks.clear()
         
         networkCallback = object : ConnectivityManager.NetworkCallback() {

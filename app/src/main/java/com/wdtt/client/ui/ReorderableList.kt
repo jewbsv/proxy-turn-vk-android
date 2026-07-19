@@ -1,15 +1,10 @@
 package com.wdtt.client.ui
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 
 fun Modifier.reorderable(
     state: LazyListState,
@@ -19,21 +14,6 @@ fun Modifier.reorderable(
     var draggedDistance = 0f
     var draggingItemInitial: LazyListItemInfo? = null
     var draggingItemCurrent: LazyListItemInfo? = null
-    var overscrollJob: Job? = null
-
-    fun checkForOverScroll(): Float {
-        return draggingItemCurrent?.let {
-            val startOffset = it.offset + draggedDistance
-            val endOffset = it.offset + it.size + draggedDistance
-            val viewPortStart = state.layoutInfo.viewportStartOffset
-            val viewPortEnd = state.layoutInfo.viewportEndOffset
-            when {
-                draggedDistance > 0 -> (endOffset - viewPortEnd).coerceAtLeast(0f)
-                draggedDistance < 0 -> (startOffset - viewPortStart).coerceAtMost(0f)
-                else -> 0f
-            }
-        } ?: 0f
-    }
 
     detectDragGesturesAfterLongPress(
         onDragStart = { offset ->
@@ -48,14 +28,12 @@ fun Modifier.reorderable(
             draggedDistance = 0f
             draggingItemInitial = null
             draggingItemCurrent = null
-            overscrollJob?.cancel()
             onDragEnd()
         },
         onDragEnd = {
             draggedDistance = 0f
             draggingItemInitial = null
             draggingItemCurrent = null
-            overscrollJob?.cancel()
             onDragEnd()
         },
         onDrag = { change, dragAmount ->
@@ -79,8 +57,6 @@ fun Modifier.reorderable(
                 draggedDistance += initial.offset - targetItem.offset
                 draggingItemInitial = targetItem
             }
-
-            // Overscroll logic could be implemented here, but keeping it simple for now
         }
     )
 })

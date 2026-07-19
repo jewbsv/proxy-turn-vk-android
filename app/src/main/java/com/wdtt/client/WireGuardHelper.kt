@@ -148,10 +148,6 @@ class WireGuardHelper(context: Context) {
         }
     }
 
-    suspend fun isTunnelUp(): Boolean = wgMutex.withLock {
-        isSharedTunnelUpLocked()
-    }
-
     suspend fun watchdogState(): WatchdogState = wgMutex.withLock {
         when {
             disabledByEmptyWhitelist -> WatchdogState.DISABLED_BY_EMPTY_WHITELIST

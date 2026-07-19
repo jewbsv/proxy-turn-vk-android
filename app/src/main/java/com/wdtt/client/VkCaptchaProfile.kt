@@ -69,10 +69,6 @@ object VkCaptchaProfile {
         File(appContext.filesDir, PROFILE_FILE).writeText(profile.toString())
     }
 
-    fun rotateBrowserFp(context: Context) {
-        writeForGo(context.applicationContext)
-    }
-
     private fun jitter(base: Int, delta: Int): Int {
         return (base + Random.nextInt(-delta, delta + 1)).coerceAtLeast(320)
     }

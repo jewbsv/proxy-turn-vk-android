@@ -47,7 +47,7 @@ class QuickToggleTileService : TileService() {
         fun requestTileUpdate(context: Context) {
             if (Build.VERSION.SDK_INT >= 24) {
                 try {
-                    TileService.requestListeningState(
+                    requestListeningState(
                         context,
                         ComponentName(context, QuickToggleTileService::class.java)
                     )

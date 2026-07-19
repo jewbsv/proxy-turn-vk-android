@@ -2,7 +2,6 @@ package com.wdtt.client.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -18,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
@@ -31,8 +29,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -50,7 +46,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,7 +53,6 @@ import com.wdtt.client.PeerAddress
 import com.wdtt.client.SettingsStore
 import com.wdtt.client.TunnelManager
 import com.wdtt.client.TunnelService
-import com.wdtt.client.WDTTColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,7 +121,7 @@ fun SettingsTab(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsTabContent(
-    context: android.content.Context,
+    context: Context,
     scope: kotlinx.coroutines.CoroutineScope,
     settingsStore: SettingsStore,
     themeMode: String,
@@ -146,7 +140,7 @@ fun SettingsTabContent(
 
     val tunnelRunning by TunnelManager.running.collectAsStateWithLifecycle()
     val tunnelConnecting by TunnelManager.isConnecting.collectAsStateWithLifecycle()
-    val tunnelBusy = tunnelRunning || tunnelConnecting
+    tunnelRunning || tunnelConnecting
     var connectCancelArmed by remember { mutableStateOf(false) }
     LaunchedEffect(tunnelConnecting, tunnelRunning) {
         connectCancelArmed = false
@@ -188,10 +182,6 @@ fun SettingsTabContent(
     }
 
     var peerInput by rememberSaveable { mutableStateOf("") }
-    var vkHash1 by rememberSaveable { mutableStateOf("") }
-    var vkHash2 by rememberSaveable { mutableStateOf("") }
-    var vkHash3 by rememberSaveable { mutableStateOf("") }
-    var vkHash4 by rememberSaveable { mutableStateOf("") }
     var workersInput by rememberSaveable { mutableFloatStateOf(18f) }
     var showHashesDialog by rememberSaveable { mutableStateOf(false) }
     var autoCaptchaEnabled by rememberSaveable { mutableStateOf(true) }
@@ -226,8 +216,7 @@ fun SettingsTabContent(
         if (vkAccountAuth) SettingsStore.VK_ACCOUNT_MAX_WORKERS.toFloat()
         else SettingsStore.maxAnonymousWorkers(filledHashCount.coerceAtLeast(1)).toFloat()
     }
-    
-    val globalHashesRaw by settingsStore.globalVkHashes.collectAsStateWithLifecycle(initialValue = "")
+
     val vkAnonPath by settingsStore.vkAnonPath.collectAsStateWithLifecycle(initialValue = "vkcalls")
     val goDnsPreset by settingsStore.goDnsPreset.collectAsStateWithLifecycle(initialValue = "yandex")
     val goDnsCustomStored by settingsStore.goDnsCustom.collectAsStateWithLifecycle(initialValue = "")
@@ -1222,7 +1211,7 @@ fun SettingsTabContent(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = androidx.compose.material.icons.Icons.Filled.Info,
+                                        imageVector = Icons.Filled.Info,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(20.dp)
@@ -1248,7 +1237,7 @@ fun SettingsTabContent(
                                 ) {
                                     Button(
                                         onClick = {
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/darkbit_vpnbot"))
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/darkbit_vpnbot"))
                                             context.startActivity(intent)
                                         },
                                         modifier = Modifier.fillMaxWidth(),
@@ -1270,7 +1259,7 @@ fun SettingsTabContent(
 
                                     Button(
                                         onClick = {
-                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/sidylinkbot"))
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/sidylinkbot"))
                                             context.startActivity(intent)
                                         },
                                         modifier = Modifier.fillMaxWidth(),
@@ -1383,7 +1372,7 @@ fun SettingsTabContent(
                                     Архитектура (ABI): ${Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}
                                     Устройство: ${Build.MANUFACTURER} ${Build.MODEL}
                                 """.trimIndent()
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("qWDTT Report", reportText))
                                 Toast.makeText(context, "Отчёт о системе скопирован!", Toast.LENGTH_SHORT).show()
                             },
@@ -1528,7 +1517,7 @@ fun SettingsTabContent(
                                             context.startService(
                                                 Intent(context, TunnelService::class.java).apply { action = "STOP" }
                                             )
-                                            kotlinx.coroutines.delay(800)
+                                            delay(800)
                                             requestVpnAndStart()
                                         }
 
@@ -2099,75 +2088,6 @@ private fun CompactSteppedSlider(
     )
 }
 
-// ═══ Important Info Dialog ═══
-@Composable
-fun ImportantInfoDialog(onDismiss: () -> Unit) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.95f).padding(8.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            tonalElevation = 6.dp,
-        ) {
-            Column(modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState())) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Важная информация", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, null)
-                    }
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                InfoSection("Капча ВК",
-                    "По умолчанию в приложении установлен ручной режим (WBV + РУЧ), но его можно заменить на RJS-АВТ. Это продвинутый автоматический метод решения капчи без всплывающих окон и участия человека, основанный на реверс-инжиниринге JS-кода капчи. Он имитирует действия пользователя в фоновом режиме, обеспечивая бесперебойную работу.\n\nВАЖНО: Если в вашем случае RJS не проходит капчу или выдает ошибки (проблемы со связью или изменения на стороне ВК) — переключитесь обратно в ручной режим."
-                )
-                InfoSection("Как решать капчу",
-                    "Она не сложная: нужно просто потянуть слайдер вправо так, чтобы все элементы (обычно это 3 слова) идеально сошлись в пазле."
-                )
-                InfoSection("Сетевое окружение",
-                    "Отключите другие VPN/Прокси и «Приватный DNS» перед использованием."
-                )
-                InfoSection("Связь потоков и капч",
-                    "Рекомендую выбирать 12-36 потока для меньшего количества капч. Если вам всё равно на частоту ввода капчи в фоне — ставьте 48 и более ради скорости."
-                )
-
-                Spacer(Modifier.height(20.dp))
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(contentColor = MaterialTheme.colorScheme.onPrimary)
-                ) {
-                    Text("Понятно")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoSection(title: String, body: String) {
-    Spacer(Modifier.height(12.dp))
-    Text(
-        title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(Modifier.height(4.dp))
-    Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-    Spacer(Modifier.height(4.dp))
-}
-
 // Округление до ближайшего кратного WORKERS_PER_GROUP (анонимный режим) или 1..max (аккаунт VK)
 private fun roundToGroup(value: Float, maxW: Float = 96f, accountMode: Boolean = false): Float {
     if (accountMode || maxW < WORKERS_PER_GROUP) {
@@ -2221,7 +2141,7 @@ fun HashesDialog(
     val badCount = checkResults.values.count {
         it.status in setOf("dead", "error", "network", "limited", "captcha")
     }
-    val tunnelBusy = TunnelManager.running.value
+    val tunnelBusy by TunnelManager.running.collectAsStateWithLifecycle()
     val vkLoggedIn = remember { mutableStateOf(VkAuthWebViewManager.hasVkSessionCookie()) }
     LaunchedEffect(Unit) {
         vkLoggedIn.value = VkAuthWebViewManager.hasVkSessionCookie()
@@ -2650,7 +2570,7 @@ private fun HashSlotCard(
     )
 }
 
-private fun copyText(context: android.content.Context, label: String, value: String) {
+private fun copyText(context: Context, label: String, value: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
     Toast.makeText(context, "Скопировано", Toast.LENGTH_SHORT).show()
@@ -2813,7 +2733,7 @@ private fun PaletteCircleOption(
         baseModifier
     }
 
-    androidx.compose.foundation.layout.Box(
+    Box(
         modifier = finalModifier
     )
 }

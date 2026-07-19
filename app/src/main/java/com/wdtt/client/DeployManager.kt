@@ -30,8 +30,6 @@ object DeployManager {
         errorsFile = File(dir, "errors.log")
     }
 
-    fun getErrorsFile(): File? = errorsFile
-
     /** Записать ошибку в файл (потокобезопасно) и во вкладку «Логи» */
     @Synchronized
     fun writeError(msg: String) {
