@@ -531,6 +531,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 	var waitingForDays bool
 	var waitingForPorts bool
 	var waitingForHash bool
+	var waitingForLimit string // пароль, для которого ожидается новый лимит устройств
 	var targetPassword string
 
 	var tempDays int
@@ -593,109 +594,8 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 						sendTelegram(token, adminID, "❌ Пароль не найден", nil)
 						continue
 					}
-					txt := fmt.Sprintf("👤 *Имя:* %s\n🔑 *Пароль:* `%s`\n", passwordEntryLabel(entry, pass, 0), pass)
-					if entry.VkHash != "" {
-						ports := entry.Ports
-						if ports == "" {
-							ports = "56000,56001,9000"
-						}
-						pts := strings.Split(ports, ",")
-						srvIP := getPublicIP()
-						link := fmt.Sprintf("wdtt://%s:%s:%s:%s:%s:%s", srvIP, pts[0], pts[1], pts[2], pass, entry.VkHash)
-						txt += fmt.Sprintf("🔗 *Быстрая ссылка:* `%s`\n", link)
-					}
-					if entry.IsDeactivated {
-						txt += "🔴 Статус: *ДЕАКТИВИРОВАН*\n"
-					} else {
-						txt += "🟢 Статус: *АКТИВЕН*\n"
-					}
-
-					if entry.ExpiresAt > 0 {
-						expireTime := time.Unix(entry.ExpiresAt, 0)
-						remaining := time.Until(expireTime)
-						if remaining > 0 {
-							txt += fmt.Sprintf("⏰ Истекает: %s (через %dd)\n", expireTime.Format("02.01.2006"), int(remaining.Hours()/24))
-						} else {
-							txt += "⏰ *ИСТЁК* ❌\n"
-						}
-					} else {
-						txt += "⏰ Бессрочный ♾\n"
-					}
-
-					txt += fmt.Sprintf("\n📊 *Трафик:*\n• Скачано: %.2f MB\n• Отдано: %.2f MB\n", float64(entry.DownBytes)/(1024*1024), float64(entry.UpBytes)/(1024*1024))
-
-					limit := entry.MaxDevices
-					if limit <= 0 {
-						limit = 1
-					}
-					boundCount := len(entry.DeviceIDs)
-					if boundCount == 0 && entry.DeviceID != "" {
-						boundCount = 1
-					}
-
-					txt += fmt.Sprintf("\n📱 *Привязанные устройства* (%d/%d):\n", boundCount, limit)
-					hasDevices := false
-
-					// Legacy
-					if entry.DeviceID != "" && len(entry.DeviceIDs) == 0 {
-						hasDevices = true
-						dev, devExists := db.Devices[entry.DeviceID]
-						if devExists {
-							txt += fmt.Sprintf("• ID: `%s`\n  IP: `%s`\n  📊 ↑%.1f MB / ↓%.1f MB\n", entry.DeviceID, dev.IP, float64(dev.UpBytes)/(1024*1024), float64(dev.DownBytes)/(1024*1024))
-						} else {
-							txt += fmt.Sprintf("• ID: `%s` (удалено)\n", entry.DeviceID)
-						}
-					}
-
-					// Array
-					for i, id := range entry.DeviceIDs {
-						hasDevices = true
-						dev, devExists := db.Devices[id]
-						if devExists {
-							txt += fmt.Sprintf("• [%d] ID: `%s`\n  IP: `%s`\n  📊 ↑%.1f MB / ↓%.1f MB\n", i+1, id, dev.IP, float64(dev.UpBytes)/(1024*1024), float64(dev.DownBytes)/(1024*1024))
-						} else {
-							txt += fmt.Sprintf("• [%d] ID: `%s` (удалено)\n", i+1, id)
-						}
-					}
-
-					var kb []map[string]interface{}
-					kb = append(kb, map[string]interface{}{
-						"text":          "📂 Получить .conf файл",
-						"callback_data": "getfile_" + pass,
-					})
-					if !hasDevices {
-						txt += "_Ожидает первого подключения..._\n"
-					} else {
-						kb = append(kb, map[string]interface{}{
-							"text":          "🗑 Отвязать ВСЕ устройства",
-							"callback_data": "unbind_" + pass,
-						})
-					}
-
+					txt, keyboard := buildClientCard(entry, pass)
 					dbMutex.Unlock()
-					if entry.IsDeactivated {
-						kb = append(kb, map[string]interface{}{
-							"text":          "✅ Активировать",
-							"callback_data": "react_" + pass,
-						})
-					} else {
-						kb = append(kb, map[string]interface{}{
-							"text":          "⏸ Деактивировать",
-							"callback_data": "deact_" + pass,
-						})
-					}
-					kb = append(kb, map[string]interface{}{
-						"text":          "❌ Удалить пароль",
-						"callback_data": "delpass_" + pass,
-					})
-					kb = append(kb, map[string]interface{}{
-						"text":          "◀️ Назад к списку",
-						"callback_data": "backlist",
-					})
-					var keyboard [][]map[string]interface{}
-					for _, btn := range kb {
-						keyboard = append(keyboard, []map[string]interface{}{btn})
-					}
 					sendTelegram(token, adminID, txt, map[string]interface{}{"inline_keyboard": keyboard})
 
 				} else if strings.HasPrefix(data, "deact_") {
@@ -734,6 +634,25 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					}
 					dbMutex.Unlock()
 					sendTelegram(token, adminID, fmt.Sprintf("✅ Пароль `%s` активирован", pass), nil)
+
+				} else if strings.HasPrefix(data, "limit_") {
+					pass := strings.TrimPrefix(data, "limit_")
+					dbMutex.Lock()
+					entry, exists := db.Passwords[pass]
+					curLimit := 1
+					if exists && entry != nil {
+						curLimit = entry.MaxDevices
+						if curLimit <= 0 {
+							curLimit = 1
+						}
+					}
+					dbMutex.Unlock()
+					if !exists || entry == nil {
+						sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+						continue
+					}
+					waitingForLimit = pass
+					sendTelegram(token, adminID, fmt.Sprintf("📱 Текущий лимит устройств: *%d*.\n\nВведите новое значение лимита (целое число, не меньше 1):", curLimit), nil)
 
 				} else if data == "mainlink" {
 					targetPassword = "main"
@@ -904,6 +823,36 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					{"text": "Нет", "callback_data": "ports_custom"},
 				})
 				sendTelegram(token, adminID, "⚙️ Использовать стандартные порты (56000, 56001, 9000)?", map[string]interface{}{"inline_keyboard": keyboard})
+				continue
+			}
+
+			// Обработка ввода нового лимита устройств
+			if waitingForLimit != "" {
+				pass := waitingForLimit
+				waitingForLimit = ""
+				parts := strings.Fields(cmd)
+				if len(parts) == 0 {
+					sendTelegram(token, adminID, "❌ Неверное значение. Отправьте /list, выберите профиль и нажмите «Изменить лимит устройств» ещё раз.", nil)
+					continue
+				}
+				newLimit, err := strconv.Atoi(parts[0])
+				if err != nil || newLimit < 1 {
+					sendTelegram(token, adminID, "❌ Неверное значение. Лимит должен быть целым числом не меньше 1.", nil)
+					continue
+				}
+				dbMutex.Lock()
+				entry, exists := db.Passwords[pass]
+				if !exists || entry == nil {
+					dbMutex.Unlock()
+					sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+					continue
+				}
+				entry.MaxDevices = newLimit
+				saveDB()
+				txt, keyboard := buildClientCard(entry, pass)
+				dbMutex.Unlock()
+				sendTelegram(token, adminID, fmt.Sprintf("✅ Лимит устройств обновлён: *%d*", newLimit), nil)
+				sendTelegram(token, adminID, txt, map[string]interface{}{"inline_keyboard": keyboard})
 				continue
 			}
 
@@ -1088,6 +1037,117 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 			}
 		}
 	}
+}
+
+// buildClientCard формирует текст карточки профиля и inline-клавиатуру управления.
+// Должен вызываться с удержанным dbMutex.
+func buildClientCard(entry *PasswordEntry, pass string) (string, [][]map[string]interface{}) {
+	txt := fmt.Sprintf("👤 *Имя:* %s\n🔑 *Пароль:* `%s`\n", passwordEntryLabel(entry, pass, 0), pass)
+	if entry.VkHash != "" {
+		ports := entry.Ports
+		if ports == "" {
+			ports = "56000,56001,9000"
+		}
+		pts := strings.Split(ports, ",")
+		srvIP := getPublicIP()
+		link := fmt.Sprintf("wdtt://%s:%s:%s:%s:%s:%s", srvIP, pts[0], pts[1], pts[2], pass, entry.VkHash)
+		txt += fmt.Sprintf("🔗 *Быстрая ссылка:* `%s`\n", link)
+	}
+	if entry.IsDeactivated {
+		txt += "🔴 Статус: *ДЕАКТИВИРОВАН*\n"
+	} else {
+		txt += "🟢 Статус: *АКТИВЕН*\n"
+	}
+
+	if entry.ExpiresAt > 0 {
+		expireTime := time.Unix(entry.ExpiresAt, 0)
+		remaining := time.Until(expireTime)
+		if remaining > 0 {
+			txt += fmt.Sprintf("⏰ Истекает: %s (через %dd)\n", expireTime.Format("02.01.2006"), int(remaining.Hours()/24))
+		} else {
+			txt += "⏰ *ИСТЁК* ❌\n"
+		}
+	} else {
+		txt += "⏰ Бессрочный ♾\n"
+	}
+
+	txt += fmt.Sprintf("\n📊 *Трафик:*\n• Скачано: %.2f MB\n• Отдано: %.2f MB\n", float64(entry.DownBytes)/(1024*1024), float64(entry.UpBytes)/(1024*1024))
+
+	limit := entry.MaxDevices
+	if limit <= 0 {
+		limit = 1
+	}
+	boundCount := len(entry.DeviceIDs)
+	if boundCount == 0 && entry.DeviceID != "" {
+		boundCount = 1
+	}
+
+	txt += fmt.Sprintf("\n📱 *Привязанные устройства* (%d/%d):\n", boundCount, limit)
+	hasDevices := false
+
+	// Legacy
+	if entry.DeviceID != "" && len(entry.DeviceIDs) == 0 {
+		hasDevices = true
+		dev, devExists := db.Devices[entry.DeviceID]
+		if devExists {
+			txt += fmt.Sprintf("• ID: `%s`\n  IP: `%s`\n  📊 ↑%.1f MB / ↓%.1f MB\n", entry.DeviceID, dev.IP, float64(dev.UpBytes)/(1024*1024), float64(dev.DownBytes)/(1024*1024))
+		} else {
+			txt += fmt.Sprintf("• ID: `%s` (удалено)\n", entry.DeviceID)
+		}
+	}
+
+	// Array
+	for i, id := range entry.DeviceIDs {
+		hasDevices = true
+		dev, devExists := db.Devices[id]
+		if devExists {
+			txt += fmt.Sprintf("• [%d] ID: `%s`\n  IP: `%s`\n  📊 ↑%.1f MB / ↓%.1f MB\n", i+1, id, dev.IP, float64(dev.UpBytes)/(1024*1024), float64(dev.DownBytes)/(1024*1024))
+		} else {
+			txt += fmt.Sprintf("• [%d] ID: `%s` (удалено)\n", i+1, id)
+		}
+	}
+
+	var kb []map[string]interface{}
+	kb = append(kb, map[string]interface{}{
+		"text":          "📂 Получить .conf файл",
+		"callback_data": "getfile_" + pass,
+	})
+	if !hasDevices {
+		txt += "_Ожидает первого подключения..._\n"
+	} else {
+		kb = append(kb, map[string]interface{}{
+			"text":          "🗑 Отвязать ВСЕ устройства",
+			"callback_data": "unbind_" + pass,
+		})
+	}
+	kb = append(kb, map[string]interface{}{
+		"text":          "📱 Изменить лимит устройств",
+		"callback_data": "limit_" + pass,
+	})
+	if entry.IsDeactivated {
+		kb = append(kb, map[string]interface{}{
+			"text":          "✅ Активировать",
+			"callback_data": "react_" + pass,
+		})
+	} else {
+		kb = append(kb, map[string]interface{}{
+			"text":          "⏸ Деактивировать",
+			"callback_data": "deact_" + pass,
+		})
+	}
+	kb = append(kb, map[string]interface{}{
+		"text":          "❌ Удалить пароль",
+		"callback_data": "delpass_" + pass,
+	})
+	kb = append(kb, map[string]interface{}{
+		"text":          "◀️ Назад к списку",
+		"callback_data": "backlist",
+	})
+	var keyboard [][]map[string]interface{}
+	for _, btn := range kb {
+		keyboard = append(keyboard, []map[string]interface{}{btn})
+	}
+	return txt, keyboard
 }
 
 func removePeerFromWG(wgDev *device.Device, dev *ClientDevice) {

@@ -64,7 +64,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import com.wdtt.client.ui.AppUpdateDialog
-import com.wdtt.client.ui.SupportNoticeDialog
 import com.wdtt.client.ui.ProfilesTab
 import com.wdtt.client.ui.LogsTab
 import com.wdtt.client.ui.SettingsTab
@@ -299,7 +298,6 @@ fun MainScreen(
         navItems.filter { isAdminInterface || it.id != 1 }
     }
     var pendingRelease by remember { mutableStateOf<AppReleaseInfo?>(null) }
-    var showSupportNotice by remember { mutableStateOf(false) }
     val currentVersion = remember { "v${BuildConfig.VERSION_NAME.removePrefix("v")}" }
     val safeBottomInset = with(density) { WindowInsets.safeDrawing.getBottom(density).toDp() }
     val navOverlayReserve = safeBottomInset + 96.dp
@@ -341,16 +339,6 @@ fun MainScreen(
             selectedTab = 2
             requestCreateProfile = true
             MainActivity.pendingAddProfile.value = false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val supportShownFor = settingsStore.supportNoticeShownVersionCode.first()
-        val currentCode = BuildConfig.VERSION_CODE
-        if (currentCode >= SettingsStore.SUPPORT_NOTICE_VERSION_CODE &&
-            supportShownFor < SettingsStore.SUPPORT_NOTICE_VERSION_CODE
-        ) {
-            showSupportNotice = true
         }
     }
 
@@ -396,13 +384,6 @@ fun MainScreen(
                     Toast.LENGTH_SHORT
                 ).show()
             }
-        }
-    }
-
-    fun dismissSupportNotice() {
-        showSupportNotice = false
-        scope.launch {
-            settingsStore.saveSupportNoticeShownVersionCode(BuildConfig.VERSION_CODE)
         }
     }
 
@@ -588,12 +569,6 @@ fun MainScreen(
         )
     }
 
-    if (showSupportNotice) {
-        SupportNoticeDialog(
-            versionName = BuildConfig.VERSION_NAME,
-            onDismiss = { dismissSupportNotice() },
-        )
-    }
 }
 
 @SuppressLint("UnusedBoxWithConstraintsScope")

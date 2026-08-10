@@ -117,10 +117,6 @@ class SettingsStore(context: Context) {
         private val UPDATE_POSTPONE_UNTIL = longPreferencesKey("update_postpone_until")
         private val UPDATE_POSTPONE_VERSION = stringPreferencesKey("update_postpone_version")
         private val INCLUDE_BETA_UPDATES = booleanPreferencesKey("include_beta_updates")
-        private val SUPPORT_NOTICE_SHOWN_VERSION_CODE = intPreferencesKey("support_notice_shown_version_code")
-
-        /** versionCode, при первом запуске которого показывается экран поддержки (донат + канал). */
-        const val SUPPORT_NOTICE_VERSION_CODE = 28
 
         // ═══ Поведение ═══
         private val AUTO_SWITCH_TO_LOGS = booleanPreferencesKey("auto_switch_to_logs")
@@ -408,7 +404,6 @@ class SettingsStore(context: Context) {
     val updatePostponeUntil: Flow<Long> = dataStore.data.map { it[UPDATE_POSTPONE_UNTIL] ?: 0L }
     val updatePostponeVersion: Flow<String> = dataStore.data.map { it[UPDATE_POSTPONE_VERSION] ?: "" }
     val includeBetaUpdates: Flow<Boolean> = dataStore.data.map { it[INCLUDE_BETA_UPDATES] ?: false }
-    val supportNoticeShownVersionCode: Flow<Int> = dataStore.data.map { it[SUPPORT_NOTICE_SHOWN_VERSION_CODE] ?: 0 }
 
     // ═══ Поведение ═══
     val autoSwitchToLogs: Flow<Boolean> = dataStore.data.map { it[AUTO_SWITCH_TO_LOGS] ?: true }
@@ -503,12 +498,6 @@ class SettingsStore(context: Context) {
     suspend fun saveIncludeBetaUpdates(enabled: Boolean) {
         dataStore.edit { prefs ->
             prefs[INCLUDE_BETA_UPDATES] = enabled
-        }
-    }
-
-    suspend fun saveSupportNoticeShownVersionCode(versionCode: Int) {
-        dataStore.edit { prefs ->
-            prefs[SUPPORT_NOTICE_SHOWN_VERSION_CODE] = versionCode
         }
     }
 
