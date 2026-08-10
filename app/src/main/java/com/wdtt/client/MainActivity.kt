@@ -2,7 +2,6 @@ package com.wdtt.client
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -63,14 +62,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
-import com.wdtt.client.ui.AppUpdateDialog
 import com.wdtt.client.ui.ProfilesTab
 import com.wdtt.client.ui.LogsTab
 import com.wdtt.client.ui.SettingsTab
 import com.wdtt.client.ui.ServersTab
 import com.wdtt.client.ui.ExceptionsTab
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.first
 import kotlin.math.PI
 import kotlin.math.abs
@@ -286,10 +282,6 @@ fun MainScreen(
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var dragTargetIndex by remember { mutableIntStateOf(-1) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
-    val updateCheckIntervalHours by settingsStore.updateCheckIntervalHours.collectAsStateWithLifecycle(
-        initialValue = DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
-    )
-    val includeBetaUpdates by settingsStore.includeBetaUpdates.collectAsStateWithLifecycle(initialValue = false)
     val interfaceRole by settingsStore.interfaceRole.collectAsStateWithLifecycle(initialValue = "admin")
     val isAdminInterface = interfaceRole == "admin"
     val autoSwitchToLogs by settingsStore.autoSwitchToLogs.collectAsStateWithLifecycle(initialValue = true)
@@ -297,8 +289,6 @@ fun MainScreen(
     val activeNavItems = remember(isAdminInterface) {
         navItems.filter { isAdminInterface || it.id != 1 }
     }
-    var pendingRelease by remember { mutableStateOf<AppReleaseInfo?>(null) }
-    val currentVersion = remember { "v${BuildConfig.VERSION_NAME.removePrefix("v")}" }
     val safeBottomInset = with(density) { WindowInsets.safeDrawing.getBottom(density).toDp() }
     val navOverlayReserve = safeBottomInset + 96.dp
 
@@ -383,56 +373,6 @@ fun MainScreen(
                     "Подписки обновлены (${result.refreshedOk})",
                     Toast.LENGTH_SHORT
                 ).show()
-            }
-        }
-    }
-
-    LaunchedEffect(updateCheckIntervalHours, includeBetaUpdates) {
-        if (updateCheckIntervalHours == UPDATE_CHECK_NEVER) return@LaunchedEffect
-
-        val intervalMillis = updateIntervalHoursToMillis(updateCheckIntervalHours)
-            ?: updateIntervalHoursToMillis(DEFAULT_UPDATE_CHECK_INTERVAL_HOURS)
-            ?: 12L * 60L * 60L * 1000L
-
-        suspend fun runUpdateCheck(reason: String) {
-            val checkedAt = System.currentTimeMillis()
-            val includeBeta = settingsStore.includeBetaUpdates.first()
-            val release = fetchLatestReleaseInfo(currentVersion, includeBeta)
-            settingsStore.saveUpdateState(
-                lastCheckAt = checkedAt,
-                latestVersion = release?.versionTag ?: "",
-                error = if (release == null) "Не удалось проверить" else ""
-            )
-
-            if (release == null) {
-                Log.w("WDTT", "[WARN] Update check: no release info, local=$currentVersion reason=$reason")
-                return
-            }
-
-            val hasUpdate = isNewerVersion(currentVersion, release.versionTag, includeBeta)
-            val postponeVer = settingsStore.updatePostponeVersion.first()
-            val postponeUntil = settingsStore.updatePostponeUntil.first()
-            val isPostponed = postponeVer == release.versionTag && checkedAt < postponeUntil
-            Log.i(
-                "WDTT",
-                "Update check: local=$currentVersion remote=${release.versionTag} newer=$hasUpdate postponed=$isPostponed reason=$reason"
-            )
-
-            if (hasUpdate && !isPostponed) {
-                pendingRelease = release
-            }
-        }
-
-        runUpdateCheck("startup")
-
-        while (isActive) {
-            val now = System.currentTimeMillis()
-            val lastCheck = settingsStore.updateLastCheckAt.first()
-            val nextCheckAt = lastCheck + intervalMillis
-            val waitMs = (nextCheckAt - now).coerceAtLeast(intervalMillis)
-            delay(waitMs)
-            if (isActive) {
-                runUpdateCheck("periodic")
             }
         }
     }
@@ -544,29 +484,6 @@ fun MainScreen(
             }
         }
 
-    }
-
-    pendingRelease?.let { release ->
-        AppUpdateDialog(
-            release = release,
-            onPostpone = {
-                pendingRelease = null
-                Toast.makeText(context, "Обновление отложено на 24 часа.", Toast.LENGTH_SHORT).show()
-                scope.launch {
-                    val now = System.currentTimeMillis()
-                    settingsStore.saveUpdatePostpone(
-                        version = release.versionTag,
-                        until = now + 24L * 60L * 60L * 1000L
-                    )
-                }
-            },
-            onUpdate = {
-                pendingRelease = null
-                scope.launch {
-                    openReleaseUrl(context, release.releaseUrl)
-                }
-            }
-        )
     }
 
 }
@@ -710,17 +627,6 @@ private fun ProxyNavigationBar(
                 }
             }
         }
-    }
-}
-
-private fun openReleaseUrl(context: Context, url: String) {
-    try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-        }
-        context.startActivity(intent)
-    } catch (_: Exception) {
-        Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
     }
 }
 

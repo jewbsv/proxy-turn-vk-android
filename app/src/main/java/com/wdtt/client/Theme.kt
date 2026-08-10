@@ -49,7 +49,7 @@ val WDTTTypography = Typography(
     labelSmall = TextStyle(fontFamily = InterFontFamily, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 0.5.sp),
 )
 
-// ═══ Светлая палитра — «Раф на кокосовом молоке» ═══
+// ═══ Светлая палитра — «Раф на кокосовом молоке» (салатовый фон) ═══
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF6D4C41),
     onPrimary = Color(0xFFFFFFFF),
@@ -63,7 +63,7 @@ private val LightColorScheme = lightColorScheme(
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFBCAAA4),
     onTertiaryContainer = Color(0xFF3E2723),
-    background = Color(0xFFF2F0EC),
+    background = Color(0xFFDCEDC8),
     onBackground = Color(0xFF1C1B1A),
     surface = Color(0xFFFAF8F4),
     onSurface = Color(0xFF1C1B1A),
@@ -122,7 +122,7 @@ private val IndigoLightColorScheme = lightColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFE2DFFF),
     onSecondaryContainer = Color(0xFF1A1744),
-    background = Color(0xFFFBF8FF),
+    background = Color(0xFFDCEDC8),
     onBackground = Color(0xFF1B1B1F),
     surface = Color(0xFFF6F3FA),
     onSurface = Color(0xFF1B1B1F),
@@ -160,7 +160,7 @@ private val ForestLightColorScheme = lightColorScheme(
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFE5E0F0),
     onSecondaryContainer = Color(0xFF1C1A23),
-    background = Color(0xFFFCF8FF),
+    background = Color(0xFFDCEDC8),
     onBackground = Color(0xFF1D1B20),
     surface = Color(0xFFF7F2FA),
     onSurface = Color(0xFF1D1B20),

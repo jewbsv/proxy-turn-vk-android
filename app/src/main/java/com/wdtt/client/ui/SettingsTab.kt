@@ -17,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
@@ -83,7 +82,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.draw.scale
 import com.wdtt.client.NotificationHelper
-import com.wdtt.client.isNewerVersion
 import com.wdtt.client.stripVkUrlStatic
 
 private const val WORKERS_PER_GROUP = 9
@@ -177,10 +175,6 @@ fun SettingsTabContent(
         serverRawPortInput = serverRawPort.toString()
     }
     val detailedLogs by settingsStore.detailedLogs.collectAsStateWithLifecycle(initialValue = false)
-    val updateCheckIntervalHours by settingsStore.updateCheckIntervalHours.collectAsStateWithLifecycle(
-        initialValue = com.wdtt.client.DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
-    )
-    val includeBetaUpdates by settingsStore.includeBetaUpdates.collectAsStateWithLifecycle(initialValue = false)
     val subscriptionAutoRefreshHours by settingsStore.subscriptionAutoRefreshHours.collectAsStateWithLifecycle(
         initialValue = SettingsStore.DEFAULT_SUB_AUTO_REFRESH_HOURS
     )
@@ -978,63 +972,6 @@ fun SettingsTabContent(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Проверять обновления",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Автоматически проверять наличие обновлений при открытии приложения",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = updateCheckIntervalHours != com.wdtt.client.UPDATE_CHECK_NEVER,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    val newInterval = if (enabled) {
-                                        com.wdtt.client.DEFAULT_UPDATE_CHECK_INTERVAL_HOURS
-                                    } else {
-                                        com.wdtt.client.UPDATE_CHECK_NEVER
-                                    }
-                                    settingsStore.saveUpdateCheckIntervalHours(newInterval)
-                                }
-                            }
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                            Text(
-                                "Бета-обновления",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Показывать pre-release сборки с GitHub (v*-beta)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = includeBetaUpdates,
-                            onCheckedChange = { enabled ->
-                                scope.launch { settingsStore.saveIncludeBetaUpdates(enabled) }
-                            }
-                        )
-                    }
-
                     val notificationsEnabled = NotificationHelper.areNotificationsEnabled(context)
                     if (!notificationsEnabled) {
                         Surface(
@@ -1400,158 +1337,18 @@ fun SettingsTabContent(
                     )
 
                     val currentVersion = remember { "v${com.wdtt.client.BuildConfig.VERSION_NAME.removePrefix("v")}" }
-                    var isCheckingUpdates by remember { mutableStateOf(false) }
-                    val updateLatestVersion by settingsStore.updateLatestVersion.collectAsStateWithLifecycle(initialValue = "")
-                    val updateLastError by settingsStore.updateLastError.collectAsStateWithLifecycle(initialValue = "")
 
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "qWDTT",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Версия $currentVersion",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SpaceNeuroX/proxy-turn-vk-android"))
-                                        context.startActivity(intent)
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("GitHub", style = MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                        }
-
                         Text(
-                            text = "Форк оригинального проекта amurcanov/proxy-turn-vk-android от разработчика SpaceNeuroX.",
+                            text = "qWDTT",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Версия $currentVersion",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        OutlinedButton(
-                            onClick = {
-                                val intent = Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse("https://pay.cloudtips.ru/p/64a6c43c")
-                                )
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Поблагодарить разработчика",
-                                style = MaterialTheme.typography.labelLarge,
-                            )
-                        }
-                        Text(
-                            text = "Если приложение помогает — можно оставить чаевые через CloudTips.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                        // Проверка обновлений
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            val updateStatusText = remember(isCheckingUpdates, updateLatestVersion, updateLastError) {
-                                when {
-                                    isCheckingUpdates -> "Проверяем..."
-                                    updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates) -> "Доступна $updateLatestVersion!"
-                                    updateLatestVersion.isNotBlank() -> "Обновлений нет"
-                                    updateLastError.isNotBlank() -> "Ошибка"
-                                    else -> "Не проверено"
-                                }
-                            }
-                            
-                            Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
-                                Text(
-                                    "Обновления",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = updateStatusText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (updateLatestVersion.isNotBlank() && isNewerVersion(currentVersion, updateLatestVersion, includeBetaUpdates)) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
-
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        isCheckingUpdates = true
-                                        try {
-                                            val release = com.wdtt.client.fetchLatestReleaseInfo(
-                                                currentVersion,
-                                                includeBetaUpdates,
-                                            )
-                                            if (release != null) {
-                                                settingsStore.saveUpdateState(
-                                                    lastCheckAt = System.currentTimeMillis(),
-                                                    latestVersion = release.versionTag,
-                                                    error = ""
-                                                )
-                                                if (isNewerVersion(currentVersion, release.versionTag, includeBetaUpdates)) {
-                                                    Toast.makeText(context, "Доступна новая версия: ${release.versionTag}", Toast.LENGTH_LONG).show()
-                                                } else {
-                                                    Toast.makeText(context, "У вас последняя версия!", Toast.LENGTH_SHORT).show()
-                                                }
-                                            } else {
-                                                settingsStore.saveUpdateState(
-                                                    lastCheckAt = System.currentTimeMillis(),
-                                                    latestVersion = "",
-                                                    error = "Ошибка"
-                                                )
-                                                Toast.makeText(context, "Не удалось проверить обновления", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } catch (e: java.lang.Exception) {
-                                            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        } finally {
-                                            isCheckingUpdates = false
-                                        }
-                                    }
-                                },
-                                enabled = !isCheckingUpdates,
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text("Проверить", style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 

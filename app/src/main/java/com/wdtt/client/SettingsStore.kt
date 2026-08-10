@@ -110,14 +110,6 @@ class SettingsStore(context: Context) {
         val CURRENT_PROFILE_ID = stringPreferencesKey("current_profile_id")
         val CURRENT_PROFILE_NAME = stringPreferencesKey("current_profile_name")
 
-        private val UPDATE_LAST_CHECK_AT = longPreferencesKey("update_last_check_at")
-        private val UPDATE_LATEST_VERSION = stringPreferencesKey("update_latest_version")
-        private val UPDATE_LAST_ERROR = stringPreferencesKey("update_last_error")
-        private val UPDATE_CHECK_INTERVAL_HOURS = intPreferencesKey("update_check_interval_hours")
-        private val UPDATE_POSTPONE_UNTIL = longPreferencesKey("update_postpone_until")
-        private val UPDATE_POSTPONE_VERSION = stringPreferencesKey("update_postpone_version")
-        private val INCLUDE_BETA_UPDATES = booleanPreferencesKey("include_beta_updates")
-
         // ═══ Поведение ═══
         private val AUTO_SWITCH_TO_LOGS = booleanPreferencesKey("auto_switch_to_logs")
         private val STOP_ON_WIFI = booleanPreferencesKey("stop_on_wifi")
@@ -397,14 +389,6 @@ class SettingsStore(context: Context) {
     val currentProfileId: Flow<String> = dataStore.data.map { it[CURRENT_PROFILE_ID] ?: "" }
     val currentProfileName: Flow<String> = dataStore.data.map { it[CURRENT_PROFILE_NAME] ?: "" }
 
-    val updateLastCheckAt: Flow<Long> = dataStore.data.map { it[UPDATE_LAST_CHECK_AT] ?: 0L }
-    val updateLatestVersion: Flow<String> = dataStore.data.map { it[UPDATE_LATEST_VERSION] ?: "" }
-    val updateLastError: Flow<String> = dataStore.data.map { it[UPDATE_LAST_ERROR] ?: "" }
-    val updateCheckIntervalHours: Flow<Int> = dataStore.data.map { it[UPDATE_CHECK_INTERVAL_HOURS] ?: 24 }
-    val updatePostponeUntil: Flow<Long> = dataStore.data.map { it[UPDATE_POSTPONE_UNTIL] ?: 0L }
-    val updatePostponeVersion: Flow<String> = dataStore.data.map { it[UPDATE_POSTPONE_VERSION] ?: "" }
-    val includeBetaUpdates: Flow<Boolean> = dataStore.data.map { it[INCLUDE_BETA_UPDATES] ?: false }
-
     // ═══ Поведение ═══
     val autoSwitchToLogs: Flow<Boolean> = dataStore.data.map { it[AUTO_SWITCH_TO_LOGS] ?: true }
     val stopOnWifi: Flow<Boolean> = dataStore.data.map { it[STOP_ON_WIFI] ?: false }
@@ -478,33 +462,6 @@ class SettingsStore(context: Context) {
         dataStore.edit { prefs ->
             prefs[CURRENT_PROFILE_ID] = id
             prefs[CURRENT_PROFILE_NAME] = name
-        }
-    }
-
-    suspend fun saveUpdateState(lastCheckAt: Long, latestVersion: String, error: String) {
-        dataStore.edit { prefs ->
-            prefs[UPDATE_LAST_CHECK_AT] = lastCheckAt
-            prefs[UPDATE_LATEST_VERSION] = latestVersion
-            prefs[UPDATE_LAST_ERROR] = error
-        }
-    }
-
-    suspend fun saveUpdateCheckIntervalHours(hours: Int) {
-        dataStore.edit { prefs ->
-            prefs[UPDATE_CHECK_INTERVAL_HOURS] = hours
-        }
-    }
-
-    suspend fun saveIncludeBetaUpdates(enabled: Boolean) {
-        dataStore.edit { prefs ->
-            prefs[INCLUDE_BETA_UPDATES] = enabled
-        }
-    }
-
-    suspend fun saveUpdatePostpone(version: String, until: Long) {
-        dataStore.edit { prefs ->
-            prefs[UPDATE_POSTPONE_VERSION] = version
-            prefs[UPDATE_POSTPONE_UNTIL] = until
         }
     }
 
