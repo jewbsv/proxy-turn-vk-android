@@ -29,6 +29,7 @@ server
 # ===== Keystore / Secrets =====
 *.keystore
 *.jks
+app/qwdtt_release.jks
 *.key
 *.pem
 
