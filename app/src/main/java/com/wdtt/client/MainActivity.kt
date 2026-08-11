@@ -62,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import com.wdtt.client.ui.ProfilesTab
 import com.wdtt.client.ui.LogsTab
 import com.wdtt.client.ui.SettingsTab
@@ -330,6 +331,44 @@ fun MainScreen(
             requestCreateProfile = true
             MainActivity.pendingAddProfile.value = false
         }
+    }
+
+    // Проверка обновлений при запуске.
+    var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+    LaunchedEffect(Unit) {
+        updateInfo = UpdateChecker.fetchLatestRelease()
+    }
+    updateInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { updateInfo = null },
+            title = { Text("Доступна новая версия") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Версия ${info.version}", fontWeight = FontWeight.SemiBold)
+                    if (info.body.isNotBlank()) {
+                        Text(
+                            text = info.body,
+                            fontSize = 13.sp,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    UpdateChecker.downloadAndInstall(context, info)
+                    updateInfo = null
+                }) {
+                    Text("Обновить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateInfo = null }) {
+                    Text("Позже")
+                }
+            }
+        )
     }
 
     // Тихое автообновление подписок при открытии (не во время туннеля).
