@@ -46,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.window.Dialog
@@ -56,6 +57,7 @@ import com.wdtt.client.BypassRoutes
 import com.wdtt.client.SettingsStore
 import com.wdtt.client.TunnelManager
 import com.wdtt.client.TunnelService
+import com.wdtt.client.UpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1370,6 +1372,81 @@ fun SettingsTabContent(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text("Скопировать системный отчёт")
+                        }
+
+                        // Проверка обновлений
+                        var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+                        var checkingUpdate by remember { mutableStateOf(false) }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (checkingUpdate) return@OutlinedButton
+                                checkingUpdate = true
+                                scope.launch {
+                                    val info = UpdateChecker.fetchLatestRelease(onlyIfNewer = false)
+                                    checkingUpdate = false
+                                    val current = com.wdtt.client.BuildConfig.VERSION_NAME
+                                    when {
+                                        info == null -> Toast.makeText(
+                                            context,
+                                            "Не удалось проверить обновления",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+
+                                        UpdateChecker.compareVersions(info.version, current) > 0 ->
+                                            updateInfo = info
+
+                                        else -> Toast.makeText(
+                                            context,
+                                            "У вас установлена последняя версия",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            enabled = !checkingUpdate
+                        ) {
+                            Text(if (checkingUpdate) "Проверка обновлений…" else "Проверить обновления")
+                        }
+
+                        updateInfo?.let { info ->
+                            AlertDialog(
+                                onDismissRequest = { updateInfo = null },
+                                title = { Text("Доступна новая версия") },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("Версия ${info.version}", fontWeight = FontWeight.SemiBold)
+                                        if (info.body.isNotBlank()) {
+                                            Text(
+                                                text = info.body,
+                                                fontSize = 13.sp,
+                                                maxLines = 6,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(info.releaseUrl))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                        updateInfo = null
+                                    }) {
+                                        Text("Открыть релиз")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { updateInfo = null }) {
+                                        Text("Позже")
+                                    }
+                                }
+                            )
                         }
 
                         Spacer(Modifier.height(12.dp))

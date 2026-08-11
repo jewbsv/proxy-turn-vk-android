@@ -38,11 +38,12 @@ object UpdateChecker {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    /** Информация о релизе: версия, заголовок, заметки и список APK-ассетов. */
+    /** Информация о релизе: версия, заголовок, заметки, ссылка и список APK-ассетов. */
     data class ReleaseInfo(
         val version: String,
         val releaseName: String,
         val body: String,
+        val releaseUrl: String,
         val assets: List<Pair<String, String>>,
     ) {
         /** APK под устройство: (имя файла, url) или null, если подходящего ассета нет. */
@@ -87,10 +88,14 @@ object UpdateChecker {
     }
 
     /**
-     * Запрос к GitHub Releases API. Возвращает [ReleaseInfo] только если найдена
-     * версия новее текущей (BuildConfig.VERSION_NAME), иначе null.
+     * Запрос к GitHub Releases API. Возвращает [ReleaseInfo] последнего релиза.
+     *
+     * При [onlyIfNewer] == true возвращает null, если найденная версия не новее
+     * текущей (BuildConfig.VERSION_NAME) — для автоматической проверки при запуске.
+     * При [onlyIfNewer] == false возвращает информацию о последнем релизе в любом
+     * случае (null только при ошибке сети/API) — для ручной кнопки «Проверить обновления».
      */
-    suspend fun fetchLatestRelease(): ReleaseInfo? = withContext(Dispatchers.IO) {
+    suspend fun fetchLatestRelease(onlyIfNewer: Boolean = true): ReleaseInfo? = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
                 .url(RELEASES_URL)
@@ -107,6 +112,7 @@ object UpdateChecker {
                 val tag = json.optString("tag_name", "").ifEmpty { return@withContext null }
                 val releaseName = json.optString("name", tag)
                 val releaseBody = json.optString("body", "")
+                val releaseUrl = json.optString("html_url", "")
                 val assets = json.optJSONArray("assets")?.let { arr ->
                     buildList {
                         for (i in 0 until arr.length()) {
@@ -120,11 +126,11 @@ object UpdateChecker {
                     }
                 } ?: emptyList()
 
-                val info = ReleaseInfo(tag, releaseName, releaseBody, assets)
+                val info = ReleaseInfo(tag, releaseName, releaseBody, releaseUrl, assets)
                 val current = BuildConfig.VERSION_NAME
                 val hasUpdate = compareVersions(info.version, current) > 0
                 Log.i(TAG, "latest=${info.version} current=$current update=$hasUpdate apks=${assets.size}")
-                if (hasUpdate) info else null
+                if (onlyIfNewer && !hasUpdate) null else info
             }
         } catch (e: Exception) {
             Log.w(TAG, "Update check failed: ${e.message}")
