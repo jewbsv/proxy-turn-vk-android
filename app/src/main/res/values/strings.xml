@@ -2,4 +2,5 @@
 <resources>
     <string name="shortcut_add_short">Добавить конфиг</string>
     <string name="shortcut_add_long">Добавить конфиг</string>
+    <string name="splash_content_description">Экран загрузки</string>
 </resources>

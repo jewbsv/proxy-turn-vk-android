@@ -4,4 +4,16 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- Полноэкранная тема для заставки: без заголовка и статус-бара -->
+    <style name="Theme.SplashScreen" parent="Theme.WDTTClient">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Android 12+: фон системной заставки до показа нашей Activity -->
+        <item name="android:windowSplashScreenBackground">#1E1E1E</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    </style>
 </resources>
