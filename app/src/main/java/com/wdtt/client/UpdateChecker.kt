@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
+import android.os.Environment
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -139,32 +139,34 @@ object UpdateChecker {
     }
 
     /**
-     * Скачивание APK через DownloadManager в cacheDir/updates (покрыт FileProvider)
-     * и запуск системного установщика по завершении загрузки.
+     * Фоновое скачивание APK через DownloadManager в публичную папку
+     * Environment.DIRECTORY_DOWNLOADS. По завершении загрузки файл открывается
+     * системным установщиком (или пользователь тапает по уведомлению).
+     *
+     * Используется прямая ссылка на APK (browser_download_url из assets),
+     * а не html_url страницы релиза — иначе DownloadManager качал бы HTML.
      */
     fun downloadAndInstall(context: Context, info: ReleaseInfo) {
-        if (!canRequestPackageInstalls(context)) {
-            openInstallSettings(context)
-            return
-        }
         val asset = info.assetForDevice()
-        if (asset == null) {
-            Log.w(TAG, "No APK asset in release ${info.version}")
-            return
-        }
+            ?: throw IllegalArgumentException("В релизе ${info.version} нет APK-ассета")
         val (assetName, assetUrl) = asset
-        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-        val target = File(dir, assetName)
-        if (target.exists()) target.delete()
 
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            ?: throw IllegalStateException("DownloadManager недоступен")
+
+        val target = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            assetName
+        )
+        runCatching { if (target.exists()) target.delete() }
+
         val request = DownloadManager.Request(Uri.parse(assetUrl)).apply {
             setTitle("qWDTT ${info.version}")
             setDescription("Скачивание обновления…")
             setMimeType("application/vnd.android.package-archive")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setAllowedOverMetered(true)
-            setDestinationUri(Uri.fromFile(target))
+            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, assetName)
         }
         val downloadId = dm.enqueue(request)
 
@@ -172,11 +174,11 @@ object UpdateChecker {
             override fun onReceive(c: Context?, i: Intent?) {
                 if (c == null || i?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L) != downloadId) return
                 runCatching { c.unregisterReceiver(this) }
-                if (!isDownloadSuccess(dm, downloadId)) {
+                if (isDownloadSuccess(dm, downloadId)) {
+                    launchInstaller(c, target)
+                } else {
                     Log.w(TAG, "Download failed: id=$downloadId")
-                    return
                 }
-                launchInstaller(c, target)
             }
         }
         ContextCompat.registerReceiver(
@@ -210,22 +212,6 @@ object UpdateChecker {
             context.startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Launch installer failed: ${e.message}")
-        }
-    }
-
-    private fun canRequestPackageInstalls(context: Context): Boolean {
-        return Build.VERSION.SDK_INT < 26 || context.packageManager.canRequestPackageInstalls()
-    }
-
-    private fun openInstallSettings(context: Context) {
-        try {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}")
-            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (_: Exception) {
-            // Не удалось открыть настройки — пропускаем.
         }
     }
 }
