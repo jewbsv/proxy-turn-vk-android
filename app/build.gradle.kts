@@ -1,5 +1,7 @@
 import java.util.Properties
 import org.gradle.api.tasks.Exec
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import com.android.build.api.variant.FilterConfiguration
 
 plugins {
     id("com.android.application")
@@ -122,6 +124,20 @@ android {
     sourceSets {
         getByName("main") {
             jniLibs.setSrcDirs(listOf("src/main/jniLibs"))
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .firstOrNull { it.filterType == FilterConfiguration.FilterType.ABI }
+                ?.identifier
+            val outputImpl = output as com.android.build.api.variant.impl.VariantOutputImpl
+            outputImpl.outputFileName.set(
+                if (abi == null) "qWDTT-universal.apk" else "qWDTT-$abi.apk"
+            )
         }
     }
 }
