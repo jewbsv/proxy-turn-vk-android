@@ -46,6 +46,12 @@ app/qwdtt_release.jks
 Thumbs.db
 Desktop.ini
 
+# ===== Local assets / Diary =====
+icon.png
+Clash Royale.png
+Инструкция по обновлению*.md
+ПРОЕКТ_ДНЕВНИК.md
+
 # ===== Misc =====
 *.log
 *.tmp
