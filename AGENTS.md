@@ -51,3 +51,15 @@
 - **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
 
 Пользователь сам проходит reCAPTCHA и нажимает Submit.
+
+## 5. ОБЯЗАТЕЛЬНАЯ пересборка бинарника сервера перед сборкой APK
+
+**Любое изменение кода сервера/бота (`server.go`, `admin_api.go` и т.д.) НЕ попадает в приложение, пока не пересобран бинарник сервера.** APK упаковывает готовый Linux-бинарник из `app/src/main/assets/server`, а бот на VPS запускается именно из него. Поэтому перед КАЖДОЙ сборкой APK:
+
+1. Пересобрать бинарник сервера для Linux:
+   `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o wdtt-server .`
+2. Скопировать его в ассет приложения: `cp wdtt-server app/src/main/assets/server`
+3. **Проверить, что бинарник свежий** (не старее правок кода), например через `grep -ac "новая-строка-из-правок" wdtt-server` — должно быть ≥1.
+4. Только после этого собирать APK (`assembleRelease`).
+
+Если APK собран со старым `assets/server` — изменения бота в приложение НЕ попадут. Также после обновления приложения нужно задеплоить новый бинарник на VPS (деплой из приложения или вручную на сервер), иначе бот продолжит работать на старом коде.
