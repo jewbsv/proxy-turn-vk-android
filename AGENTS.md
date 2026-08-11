@@ -34,3 +34,5 @@
 - **Ссылка:** https://support.google.com/googleplay/android-developer/contact/protectappeals
 - **Package name:** `net.qwdtt.client`
 - **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
+
+После проверки хэшей на VirusTotal ты ОБЯЗАН автоматически запустить скрипт предзаполнения формы Google Play Protect в браузере пользователя: `scripts/google-play-appeal-prefill.py --sha256 <хэш основного APK arm64-v8a>` (заполняет Email, Package name, SHA-256, Additional information; Submit не нажимает — reCAPTCHA и отправку пользователь проходит вручную в открытом окне).
