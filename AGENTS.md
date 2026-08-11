@@ -19,14 +19,18 @@
 
 После успешного выполнения любой значимой задачи, исправления бага или перед созданием коммита — ОБЯЗАТЕЛЬНО задокументировать проделанную работу: записать **дату**, **суть изменений** и **номер версии** в конец файла `ПРОЕКТ_ДНЕВНИК.md`, чтобы сохранялась история разработки проекта.
 
-## 4. Отчёт об APK для VirusTotal и Google Play Protect
+## 4. Автопроверка APK через VirusTotal API
 
-При каждой успешной сборке новых релизных APK-файлов ты ОБЯЗАН вычислить их хэши SHA-256 и вывести в чат готовый шаблон-отчет для ручной отправки в Google Play Protect и VirusTotal. Для каждого файла в отчёте указывать:
+При генерации релизных APK ты ОБЯЗАН автоматически прогнать их через скрипт `scripts/virustotal-check.py` (загружает файлы на VirusTotal через API, дожидается анализа, получает SHA-256). Ключ API читается скриптом из переменной окружения `VT_API_KEY` или из `local.properties` (строго локально, в git не попадает).
 
-- **Имя файла:** (например, qWDTT-arm64-v8a.apk)
-- **SHA-256 hash:** (вычисленный хэш в нижнем регистре)
-- **Действие 1:** напоминание загрузить файл на https://www.virustotal.com/gui/home/upload
-- **Действие 2:** ссылка на форму Google: https://support.google.com/googleplay/android-developer/contact/protectappeals
-- **Данные для формы:**
-  - Package name: `net.qwdtt.client`
-  - Текст для поля Additional information: *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
+В чат выводить только финальный статус для каждого файла:
+
+- **Имя APK:**
+- **Статус в VirusTotal:** (число детекций / всего движков)
+- **SHA-256:**
+
+и шаблон для формы Google Play Protect (заполняется вручную):
+
+- **Ссылка:** https://support.google.com/googleplay/android-developer/contact/protectappeals
+- **Package name:** `net.qwdtt.client`
+- **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
