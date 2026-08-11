@@ -194,13 +194,13 @@ func passwordEntryLabel(entry *PasswordEntry, pass string, index int) string {
 		}
 	}
 	if len(pass) >= 4 {
-		return fmt.Sprintf("Доступ …%s", pass[len(pass)-4:])
+		return fmt.Sprintf("Клиент …%s", pass[len(pass)-4:])
 	}
-	return fmt.Sprintf("Доступ #%d", index)
+	return fmt.Sprintf("Клиент #%d", index)
 }
 
 func nextPasswordLabel() string {
-	return fmt.Sprintf("Доступ %d", len(db.Passwords)+1)
+	return fmt.Sprintf("Клиент %d", len(db.Passwords)+1)
 }
 
 var publicIP string = ""
@@ -517,7 +517,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 
 	// Устанавливаем команды для синей кнопки Menu
 	go func() {
-		cmds := `{"commands":[{"command":"new","description":"Создать временный пароль"},{"command":"list","description":"Управление доступами"}]}`
+		cmds := `{"commands":[{"command":"new","description":"Создать нового клиента"},{"command":"list","description":"Управление клиентами"}]}`
 		resp, err := http.Post(fmt.Sprintf("https://api.telegram.org/bot%s/setMyCommands", token), "application/json", strings.NewReader(cmds))
 		if err == nil {
 			resp.Body.Close()
@@ -528,12 +528,14 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 	client := &http.Client{Timeout: 65 * time.Second}
 
 	// Состояние ожидания ввода
+	var waitingForName bool   // ожидание имени нового клиента (Шаг 1)
 	var waitingForDays bool
 	var waitingForPorts bool
 	var waitingForHash bool
 	var waitingForLimit string // пароль, для которого ожидается новый лимит устройств
 	var targetPassword string
 
+	var tempClientName string // имя клиента из Шага 1
 	var tempDays int
 	var tempMaxDevs int
 	var tempPorts string // "dtls,wg,tun"
@@ -591,7 +593,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					entry, exists := db.Passwords[pass]
 					if !exists || entry == nil {
 						dbMutex.Unlock()
-						sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+						sendTelegram(token, adminID, "❌ Клиент не найден", nil)
 						continue
 					}
 					txt, keyboard := buildClientCard(entry, pass)
@@ -622,7 +624,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 						saveDB()
 					}
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("⏸ Пароль `%s` деактивирован", pass), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("⏸ Ключ доступа `%s` деактивирован", pass), nil)
 
 				} else if strings.HasPrefix(data, "react_") {
 					pass := strings.TrimPrefix(data, "react_")
@@ -633,7 +635,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 						saveDB()
 					}
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("✅ Пароль `%s` активирован", pass), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("✅ Ключ доступа `%s` активирован", pass), nil)
 
 				} else if strings.HasPrefix(data, "limit_") {
 					pass := strings.TrimPrefix(data, "limit_")
@@ -648,7 +650,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					}
 					dbMutex.Unlock()
 					if !exists || entry == nil {
-						sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+						sendTelegram(token, adminID, "❌ Клиент не найден", nil)
 						continue
 					}
 					waitingForLimit = pass
@@ -692,7 +694,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 						sendTelegramFile(token, adminID, fileName, []byte(configJSON))
 					} else {
 						dbMutex.Unlock()
-						sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+						sendTelegram(token, adminID, "❌ Клиент не найден", nil)
 					}
 
 				} else if strings.HasPrefix(data, "unbind_") {
@@ -722,7 +724,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 						saveDB()
 					}
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("✅ Все устройства отвязаны от пароля `%s`", pass), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("✅ Все устройства отвязаны от ключа доступа `%s`", pass), nil)
 
 				} else if strings.HasPrefix(data, "delpass_") {
 					pass := strings.TrimPrefix(data, "delpass_")
@@ -750,7 +752,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					serverWrapKeys.RemovePassword(pass)
 					saveDB()
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("✅ Пароль `%s` и его устройства удалены", pass), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("✅ Клиент `%s` и его устройства удалены", pass), nil)
 
 				} else if strings.HasPrefix(data, "deldev_") {
 					devID := strings.TrimPrefix(data, "deldev_")
@@ -793,6 +795,31 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 
 			cmd := strings.TrimSpace(msg.Text)
 
+			// Кнопки главного меню всегда начинают новое действие
+			if cmd == "➕ Создать клиента" || cmd == "👥 Управление клиентами" {
+				waitingForName = false
+				waitingForDays = false
+				waitingForPorts = false
+				waitingForHash = false
+				waitingForLimit = ""
+				targetPassword = ""
+			}
+
+			// Обработка ввода имени клиента (Шаг 1)
+			if waitingForName {
+				name := strings.TrimSpace(cmd)
+				if name == "" {
+					sendTelegram(token, adminID, "❌ Имя клиента не может быть пустым. Введите имя ещё раз:", nil)
+					continue
+				}
+				waitingForName = false
+				tempClientName = name
+
+				waitingForDays = true
+				sendTelegram(token, adminID, "📅 Введите срок действия пароля в днях (1–365) и (опционально) лимит устройств через пробел:\n\n_Примеры:_\n`30` — месяц, 1 устройство\n`30 3` — месяц, до 3 устройств", nil)
+				continue
+			}
+
 			// Обработка ввода количества дней
 			if waitingForDays {
 				waitingForDays = false
@@ -832,7 +859,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				waitingForLimit = ""
 				parts := strings.Fields(cmd)
 				if len(parts) == 0 {
-					sendTelegram(token, adminID, "❌ Неверное значение. Отправьте /list, выберите профиль и нажмите «Изменить лимит устройств» ещё раз.", nil)
+					sendTelegram(token, adminID, "❌ Неверное значение. Отправьте /list, выберите клиента и нажмите «Изменить лимит устройств» ещё раз.", nil)
 					continue
 				}
 				newLimit, err := strconv.Atoi(parts[0])
@@ -844,7 +871,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				entry, exists := db.Passwords[pass]
 				if !exists || entry == nil {
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, "❌ Пароль не найден", nil)
+					sendTelegram(token, adminID, "❌ Клиент не найден", nil)
 					continue
 				}
 				entry.MaxDevices = newLimit
@@ -932,7 +959,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				}
 				if len(db.Passwords) >= maxGeneratedPasswords {
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("❌ Лимит паролей: максимум %d активных. Удалите ненужный пароль через /list.", maxGeneratedPasswords), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("❌ Лимит клиентов: максимум %d активных. Удалите ненужного клиента через /list.", maxGeneratedPasswords), nil)
 					continue
 				}
 				newPass := ""
@@ -945,16 +972,20 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				}
 				if newPass == "" {
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, "❌ Не удалось создать уникальный пароль. Повторите /new.", nil)
+					sendTelegram(token, adminID, "❌ Не удалось создать уникальный ключ доступа. Повторите /new.", nil)
 					continue
 				}
 				if err := serverWrapKeys.AddPassword(newPass); err != nil {
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, "❌ Не удалось создать WRAP-ключ для пароля. Повторите /new.", nil)
+					sendTelegram(token, adminID, "❌ Не удалось создать WRAP-ключ для клиента. Повторите /new.", nil)
 					continue
 				}
 				expiresAt := time.Now().Add(time.Duration(tempDays) * 24 * time.Hour).Unix()
-				newLabel := nextPasswordLabel()
+				newLabel := strings.TrimSpace(tempClientName)
+				if newLabel == "" {
+					newLabel = nextPasswordLabel()
+				}
+				tempClientName = ""
 				db.Passwords[newPass] = &PasswordEntry{
 					Label:      newLabel,
 					ExpiresAt:  expiresAt,
@@ -976,7 +1007,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				passEsc := neturl.QueryEscape(newPass)
 				qwdttLink := fmt.Sprintf("qwdtt://config?name=%s&peer=%s&hashes=%s&workers=16&port=9000&pass=%s", nameEsc, peerEsc, hashesEsc, passEsc)
 
-				msgText := fmt.Sprintf("👤 Имя: *%s*\n🔑 Новый пароль:\n`%s`\n\n⏰ Действует %d дн. (до %s)\n📱 Лимит: %d устройств\nОжидает первого подключения\n\n🔗 *Быстрая ссылка qWDTT:* `%s`\n\n🔗 *Legacy ссылка:* `%s`", newLabel, newPass, tempDays, expDate, tempMaxDevs, qwdttLink, link)
+				msgText := fmt.Sprintf("👤 *Клиент:* %s\n🔑 *Ключ доступа:*\n`%s`\n\n⏰ Действует %d дн. (до %s)\n📱 Лимит: %d устройств\nОжидает первого подключения\n\n🔗 *Быстрая ссылка qWDTT:* `%s`\n\n🔗 *Legacy ссылка:* `%s`", newLabel, newPass, tempDays, expDate, tempMaxDevs, qwdttLink, link)
 				sendTelegram(token, adminID, msgText, nil)
 
 				configJSON := fmt.Sprintf(`{
@@ -992,11 +1023,22 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				continue
 			}
 
-			if cmd == "/start" || cmd == "/help" {
-				sendTelegram(token, adminID, "🤖 *qWDTT VPN Manager*\n\n/new — Создать пароль\n/list — Список паролей", nil)
+			if cmd == "/start" || cmd == "/help" || cmd == "/menu" {
+				mainMenu := map[string]interface{}{
+					"keyboard": [][]map[string]string{
+						{{"text": "➕ Создать клиента"}},
+						{{"text": "👥 Управление клиентами"}},
+					},
+					"resize_keyboard":  true,
+					"one_time_keyboard": false,
+				}
+				sendTelegram(token, adminID, "🤖 *qWDTT VPN Manager*\n\n➕ Создать клиента — создать нового клиента\n👥 Управление клиентами — список и управление клиентами", mainMenu)
 
-			} else if strings.HasPrefix(cmd, "/new ") || cmd == "/new" {
+			} else if cmd == "➕ Создать клиента" || strings.HasPrefix(cmd, "/new ") || cmd == "/new" {
 				args := strings.Fields(strings.TrimPrefix(cmd, "/new"))
+				if cmd == "➕ Создать клиента" {
+					args = nil
+				}
 				if len(args) >= 1 {
 					days, parseErr := strconv.Atoi(args[0])
 					if parseErr == nil && days >= 1 && days <= 365 {
@@ -1025,14 +1067,16 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				}
 				if len(db.Passwords) >= maxGeneratedPasswords {
 					dbMutex.Unlock()
-					sendTelegram(token, adminID, fmt.Sprintf("❌ Лимит паролей: максимум %d активных. Удалите ненужный пароль через /list.", maxGeneratedPasswords), nil)
+					sendTelegram(token, adminID, fmt.Sprintf("❌ Лимит клиентов: максимум %d активных. Удалите ненужного клиента через /list.", maxGeneratedPasswords), nil)
 					continue
 				}
 				dbMutex.Unlock()
-				waitingForDays = true
-				sendTelegram(token, adminID, "📅 Введите срок действия пароля в днях (1–365) и (опционально) лимит устройств через пробел:\n\n_Примеры:_\n`30` — месяц, 1 устройство\n`30 3` — месяц, до 3 устройств", nil)
 
-			} else if cmd == "/list" {
+				// Шаг 1: запрашиваем имя клиента, дальше пойдём по цепочке
+				waitingForName = true
+				sendTelegram(token, adminID, "👤 Введите имя клиента (например, Evgen):", nil)
+
+			} else if cmd == "👥 Управление клиентами" || cmd == "/list" {
 				sendPasswordList(token, adminID, wgDev)
 			}
 		}
@@ -1042,7 +1086,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 // buildClientCard формирует текст карточки профиля и inline-клавиатуру управления.
 // Должен вызываться с удержанным dbMutex.
 func buildClientCard(entry *PasswordEntry, pass string) (string, [][]map[string]interface{}) {
-	txt := fmt.Sprintf("👤 *Имя:* %s\n🔑 *Пароль:* `%s`\n", passwordEntryLabel(entry, pass, 0), pass)
+	txt := fmt.Sprintf("👤 *Клиент:* %s\n🔑 *Ключ доступа:* `%s`\n", passwordEntryLabel(entry, pass, 0), pass)
 	if entry.VkHash != "" {
 		ports := entry.Ports
 		if ports == "" {
@@ -1136,7 +1180,7 @@ func buildClientCard(entry *PasswordEntry, pass string) (string, [][]map[string]
 		})
 	}
 	kb = append(kb, map[string]interface{}{
-		"text":          "❌ Удалить пароль",
+		"text":          "❌ Удалить клиента",
 		"callback_data": "delpass_" + pass,
 	})
 	kb = append(kb, map[string]interface{}{
@@ -1235,7 +1279,7 @@ func sendPasswordList(token string, adminID int64, wgDev *device.Device) {
 		saveDB()
 	}
 
-	txt := "🔐 *Пароли:*\n\n"
+	txt := "👥 *Список клиентов:*\n\n"
 	txt += fmt.Sprintf("🔒 Главный: `%s` (владелец)\n\n", db.MainPassword)
 
 	var inlineKb []map[string]interface{}
@@ -1245,9 +1289,9 @@ func sendPasswordList(token string, adminID int64, wgDev *device.Device) {
 	})
 
 	if len(db.Passwords) == 0 {
-		txt += "_Нет сгенерированных паролей._\n"
+		txt += "_Нет созданных клиентов._\n"
 	} else {
-		txt += fmt.Sprintf("_Активно: %d/%d_\n\n", len(db.Passwords), maxGeneratedPasswords)
+		txt += fmt.Sprintf("_Клиентов: %d/%d_\n\n", len(db.Passwords), maxGeneratedPasswords)
 		index := 0
 		for p, entry := range db.Passwords {
 			index++
