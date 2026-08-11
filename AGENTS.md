@@ -46,7 +46,7 @@
 
 - **Ссылка на форму:** https://support.google.com/googleplay/android-developer/contact/protectappeals
 - **Email address:** `jewbsv@gmail.com`
-- **Application package name:** `net.qwdtt.client`
+- **Application package name:** `net.qwdtt.client.jewbsv`
 - **SHA-256 hash:** перечислить хэши ВСЕХ актуальных APK (обычно все 4: arm64-v8a, armeabi-v7a, x86_64, universal) в виде таблицы «Файл → SHA-256»
 - **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
 

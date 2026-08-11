@@ -13,11 +13,11 @@ android {
     compileSdk = 35
     
     defaultConfig {
-        applicationId = "net.qwdtt.client"
+        applicationId = "net.qwdtt.client.jewbsv"
         minSdk = 28
         targetSdk = 35
-        versionCode = 44
-        versionName = "1.4.32"
+        versionCode = 45
+        versionName = "1.4.33"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

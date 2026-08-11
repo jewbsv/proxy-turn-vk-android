@@ -9,6 +9,6 @@
         <intent
             android:action="com.wdtt.client.shortcut.ADD_PROFILE"
             android:targetClass="com.wdtt.client.MainActivity"
-            android:targetPackage="net.qwdtt.client" />
+            android:targetPackage="net.qwdtt.client.jewbsv" />
     </shortcut>
 </shortcuts>
