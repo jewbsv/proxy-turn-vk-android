@@ -42,15 +42,27 @@
 
 После **каждого изменения APK и его заливки** (а также по отдельному запросу) — ОБЯЗАТЕЛЬНО выдавать пользователю полный список значений для ручного ввода в форму Google Play Protect. Форму заполняет пользователь вручную в браузере — предзаполнение Selenium не использовать.
 
-**Шаблон (выдавать целиком, каждый раз с актуальными значениями):**
+**Шаблон (выдавать каждый раз СТРОГО в таком Markdown-формате):**
 
-- **Ссылка на форму:** https://support.google.com/googleplay/android-developer/contact/protectappeals
-- **Email address:** `jewbsv@gmail.com`
-- **Application package name:** `net.qwdtt.client.jewbsv`
-- **SHA-256 hash:** перечислить хэши ВСЕХ актуальных APK (обычно все 4: arm64-v8a, armeabi-v7a, x86_64, universal) в виде таблицы «Файл → SHA-256»
-- **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
+Вот полные данные для формы Google Play Protect:
 
-Пользователь сам проходит reCAPTCHA и нажимает Submit.
+**Ссылка на форму:** https://support.google.com/googleplay/android-developer/contact/protectappeals
+
+**Данные для ввода:**
+- **Email address:** jewbsv@gmail.com
+- **Application package name:** net.qwdtt.client.jewbsv
+- **Additional information:** "This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."
+
+**SHA-256 hash (актуальные APK v[УКАЗАТЬ ВЕРСИЮ]):**
+
+| Файл | SHA-256 |
+| :--- | :--- |
+| qWDTT-arm64-v8a.apk | [хэш] |
+| qWDTT-armeabi-v7a.apk | [хэш] |
+| qWDTT-x86_64.apk | [хэш] |
+| qWDTT-universal.apk | [хэш] |
+
+Форму заполняешь вручную, reCAPTCHA проходишь сам и жмёшь Submit.
 
 ## 5. ОБЯЗАТЕЛЬНАЯ пересборка бинарника сервера перед сборкой APK
 
