@@ -357,7 +357,12 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    UpdateChecker.downloadAndInstall(context, info)
+                    try {
+                        UpdateChecker.downloadAndInstall(context, info)
+                    } catch (e: Exception) {
+                        Log.w("WDTT", "Update download failed: ${e.message}")
+                        Toast.makeText(context, "Не удалось начать загрузку обновления", Toast.LENGTH_SHORT).show()
+                    }
                     updateInfo = null
                 }) {
                     Text("Обновить")

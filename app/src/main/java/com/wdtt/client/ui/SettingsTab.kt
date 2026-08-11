@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1429,12 +1430,12 @@ fun SettingsTabContent(
                                     }
                                 },
                                 confirmButton = {
+                                    val uriHandler = LocalUriHandler.current
                                     TextButton(onClick = {
-                                        runCatching {
-                                            context.startActivity(
-                                                Intent(Intent.ACTION_VIEW, Uri.parse(info.releaseUrl))
-                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            )
+                                        try {
+                                            uriHandler.openUri(info.releaseUrl)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show()
                                         }
                                         updateInfo = null
                                     }) {
