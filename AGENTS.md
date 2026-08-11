@@ -10,6 +10,13 @@
 - `versionName` установить равным значению пользователя;
 - применить в `app/build.gradle.kts` до финальной сборки.
 
+**Каждый раз, когда пользователь подтверждает повышение версии (versionCode/versionName), агент ОБЯЗАН сразу же:**
+- сделать коммит с этим изменением кода (например, `chore: bump version to 1.4.2`);
+- создать соответствующий Git-тег (например, `v1.4.2`);
+- отправить всё на GitHub: `git push` и `git push --tags`.
+
+**Версия на GitHub никогда не должна отставать от версии собранных APK.**
+
 ## 2. Безопасность секретов
 
 - Не сохранять в git пароли и ключи: `local.properties`, `*.jks` — в `.gitignore`.
@@ -19,7 +26,7 @@
 
 После успешного выполнения любой значимой задачи, исправления бага или перед созданием коммита — ОБЯЗАТЕЛЬНО задокументировать проделанную работу: записать **дату**, **суть изменений** и **номер версии** в конец файла `ПРОЕКТ_ДНЕВНИК.md`, чтобы сохранялась история разработки проекта.
 
-## 4. Автопроверка APK через VirusTotal API
+## 4. Отчёт по APK и выдача формы Google Play Protect
 
 При генерации релизных APK ты ОБЯЗАН автоматически прогнать их через скрипт `scripts/virustotal-check.py` (загружает файлы на VirusTotal через API, дожидается анализа, получает SHA-256). Ключ API читается скриптом из переменной окружения `VT_API_KEY` или из `local.properties` (строго локально, в git не попадает).
 
@@ -29,10 +36,14 @@
 - **Статус в VirusTotal:** (число детекций / всего движков)
 - **SHA-256:**
 
-и шаблон для формы Google Play Protect (заполняется вручную):
+После **каждого изменения APK и его заливки** (а также по отдельному запросу) — ОБЯЗАТЕЛЬНО выдавать пользователю полный список значений для ручного ввода в форму Google Play Protect. Форму заполняет пользователь вручную в браузере — предзаполнение Selenium не использовать.
 
-- **Ссылка:** https://support.google.com/googleplay/android-developer/contact/protectappeals
-- **Package name:** `net.qwdtt.client`
+**Шаблон (выдавать целиком, каждый раз с актуальными значениями):**
+
+- **Ссылка на форму:** https://support.google.com/googleplay/android-developer/contact/protectappeals
+- **Email address:** `jewbsv@gmail.com`
+- **Application package name:** `net.qwdtt.client`
+- **SHA-256 hash:** перечислить хэши ВСЕХ актуальных APK (обычно все 4: arm64-v8a, armeabi-v7a, x86_64, universal) в виде таблицы «Файл → SHA-256»
 - **Additional information:** *"This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."*
 
-После проверки хэшей на VirusTotal ты ОБЯЗАН автоматически запустить скрипт предзаполнения формы Google Play Protect в браузере пользователя: `scripts/google-play-appeal-prefill.py --sha256 <хэш основного APK arm64-v8a>` (заполняет Email, Package name, SHA-256, Additional information; Submit не нажимает — reCAPTCHA и отправку пользователь проходит вручную в открытом окне).
+Пользователь сам проходит reCAPTCHA и нажимает Submit.
