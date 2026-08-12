@@ -48,12 +48,17 @@ class SplashScreenActivity : ComponentActivity() {
         val screenWidth = displayMetrics.widthPixels.toFloat()
         val screenHeight = displayMetrics.heightPixels.toFloat()
 
-        val scaleX = screenWidth / videoWidth
-        val scaleY = screenHeight / videoHeight
-        val scale = max(scaleX, scaleY)
+        // VideoView уже вписывает видео в экран с сохранением пропорций (FIT_CENTER).
+        // Чтобы получить centerCrop без огромного зума, масштабируем по соотношению
+        // сторон видео и экрана, а не по исходным пикселям видео.
+        val videoAspect = videoWidth / videoHeight
+        val screenAspect = screenWidth / screenHeight
+        val scale = max(videoAspect / screenAspect, screenAspect / videoAspect)
 
-        videoView.scaleX = scale
-        videoView.scaleY = scale
+        if (scale > 1f) {
+            videoView.scaleX = scale
+            videoView.scaleY = scale
+        }
     }
 
     private fun goToMain() {
