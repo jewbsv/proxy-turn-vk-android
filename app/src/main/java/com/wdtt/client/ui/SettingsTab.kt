@@ -79,6 +79,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Switch
@@ -1433,6 +1434,20 @@ fun SettingsTabContent(
                                     val uriHandler = LocalUriHandler.current
                                     TextButton(onClick = {
                                         try {
+                                            UpdateChecker.downloadAndInstall(context, info)
+                                        } catch (e: Exception) {
+                                            Log.w("WDTT", "Update download failed: ${e.message}")
+                                            Toast.makeText(context, "Не удалось начать загрузку обновления", Toast.LENGTH_SHORT).show()
+                                        }
+                                        updateInfo = null
+                                    }) {
+                                        Text("Обновить")
+                                    }
+                                },
+                                dismissButton = {
+                                    val uriHandler = LocalUriHandler.current
+                                    TextButton(onClick = {
+                                        try {
                                             uriHandler.openUri(info.releaseUrl)
                                         } catch (e: Exception) {
                                             Toast.makeText(context, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show()
@@ -1440,11 +1455,6 @@ fun SettingsTabContent(
                                         updateInfo = null
                                     }) {
                                         Text("Открыть релиз")
-                                    }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = { updateInfo = null }) {
-                                        Text("Позже")
                                     }
                                 }
                             )

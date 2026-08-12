@@ -8,7 +8,9 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -26,12 +28,16 @@ import java.util.concurrent.TimeUnit
  * Приложение подбирает APK под ABI устройства (Build.SUPPORTED_ABIS) —
  * предпочитается точное имя qWDTT-<abi>.apk, затем qWDTT-universal.apk,
  * затем совпадение по ABI в любом имени ассета.
+ *
+ * APK скачивается во внутреннее хранилище приложения ([context.cacheDir]/updates),
+ * после завершения загрузки автоматически открывается системный установщик.
  */
 object UpdateChecker {
 
     private const val REPO = "jewbsv/proxy-turn-vk-android"
     private const val RELEASES_URL = "https://api.github.com/repos/$REPO/releases/latest"
     private const val TAG = "UpdateChecker"
+    private const val UPDATES_DIR = "updates"
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -139,9 +145,35 @@ object UpdateChecker {
     }
 
     /**
-     * Фоновое скачивание APK через DownloadManager в публичную папку
-     * Environment.DIRECTORY_DOWNLOADS. По завершении загрузки файл открывается
-     * системным установщиком (или пользователь тапает по уведомлению).
+     * Возвращает true, если у приложения есть разрешение на установку APK из неизвестных источников.
+     */
+    fun isInstallPermissionGranted(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            // До Android 8 разрешение запрашивается системным диалогом при установке.
+            true
+        }
+    }
+
+    /**
+     * Открывает системный экран разрешений, чтобы пользователь мог разрешить
+     * установку APK из этого приложения.
+     */
+    fun openInstallPermissionSettings(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}")
+            )
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /**
+     * Фоновое скачивание APK через DownloadManager во внутреннее хранилище приложения
+     * ([context.cacheDir]/updates). По завершении загрузки файл открывается системным
+     * установщиком (если выдано разрешение [REQUEST_INSTALL_PACKAGES]).
      *
      * Используется прямая ссылка на APK (browser_download_url из assets),
      * а не html_url страницы релиза — иначе DownloadManager качал бы HTML.
@@ -154,10 +186,8 @@ object UpdateChecker {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             ?: throw IllegalStateException("DownloadManager недоступен")
 
-        val target = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            assetName
-        )
+        val updatesDir = File(context.cacheDir, UPDATES_DIR).apply { mkdirs() }
+        val target = File(updatesDir, assetName)
         runCatching { if (target.exists()) target.delete() }
 
         val request = DownloadManager.Request(Uri.parse(assetUrl)).apply {
@@ -166,7 +196,7 @@ object UpdateChecker {
             setMimeType("application/vnd.android.package-archive")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setAllowedOverMetered(true)
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, assetName)
+            setDestinationUri(Uri.fromFile(target))
         }
         val downloadId = dm.enqueue(request)
 
@@ -178,6 +208,7 @@ object UpdateChecker {
                     launchInstaller(c, target)
                 } else {
                     Log.w(TAG, "Download failed: id=$downloadId")
+                    Toast.makeText(c, "Не удалось скачать обновление", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -185,7 +216,7 @@ object UpdateChecker {
             context,
             receiver,
             IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_EXPORTED
+            ContextCompat.RECEIVER_NOT_EXPORTED
         )
         Log.i(TAG, "Download started: $assetName -> $target")
     }
@@ -202,6 +233,16 @@ object UpdateChecker {
     }
 
     private fun launchInstaller(context: Context, file: File) {
+        if (!isInstallPermissionGranted(context)) {
+            Toast.makeText(
+                context,
+                "Разрешите установку из этого источника, затем нажмите Обновить ещё раз",
+                Toast.LENGTH_LONG
+            ).show()
+            openInstallPermissionSettings(context)
+            return
+        }
+
         try {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -211,7 +252,8 @@ object UpdateChecker {
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Launch installer failed: ${e.message}")
+            Log.e(TAG, "Launch installer failed: ${e.message}", e)
+            Toast.makeText(context, "Не удалось открыть установщик: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }

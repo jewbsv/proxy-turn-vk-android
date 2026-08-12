@@ -2,5 +2,4 @@
 <paths>
     <cache-path name="apk_updates" path="updates/" />
     <cache-path name="logs" path="logs/" />
-    <external-path name="public_downloads" path="Download/" />
 </paths>
