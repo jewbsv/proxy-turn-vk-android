@@ -150,7 +150,7 @@ def main(argv):
     print("=" * 70)
     print("Шаблон для Google Play Protect (форма заполняется вручную):")
     print("  Ссылка: https://support.google.com/googleplay/android-developer/contact/protectappeals")
-    print("  Package name: net.qwdtt.client")
+    print("  Package name: net.qwdtt.client.jewbsv")
     print("  Additional information: \"This is a personal open-source proxy and utility app built cleanly")
     print("                           from source code. It contains no malware, uses standard network APIs,")
     print("                           and is a false positive of Play Protect.\"")

@@ -332,6 +332,11 @@ fw_cleanup_wdtt_rules() {
 
 cleanup_config_dir_keep_access_db() {
     [ -d "$WDTT_CONFIG_DIR" ] || return 0
+    if [ -f "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB" ]; then
+        mkdir -p /tmp
+        cp "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB" /tmp/wdtt_backup.json 2>/dev/null || true
+        chmod 600 /tmp/wdtt_backup.json 2>/dev/null || true
+    fi
     find "$WDTT_CONFIG_DIR" -mindepth 1 -maxdepth 1 ! -name "$WDTT_ACCESS_DB" -exec rm -rf {} + 2>/dev/null || true
     [ -f "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB" ] && chmod 600 "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB" 2>/dev/null || true
 }
@@ -443,6 +448,17 @@ setup_wdtt_binary() {
     fi
 
     mkdir -p "$WDTT_CONFIG_DIR"
+}
+
+# ─── Восстановление базы доступа из бэкапа ───────────────────────────────────
+restore_access_db_backup() {
+    if [ -f /tmp/wdtt_backup.json ]; then
+        mkdir -p "$WDTT_CONFIG_DIR"
+        cp /tmp/wdtt_backup.json "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB"
+        chmod 600 "$WDTT_CONFIG_DIR/$WDTT_ACCESS_DB" 2>/dev/null || true
+        rm -f /tmp/wdtt_backup.json
+        echo "✓ База доступа восстановлена из бэкапа /tmp/wdtt_backup.json"
+    fi
 }
 
 # ─── Systemd-сервис WDTT ─────────────────────────────────────────────────────
@@ -604,6 +620,7 @@ main() {
             setup_sysctl
             setup_nat_and_firewall
             setup_wdtt_binary
+            restore_access_db_backup
             setup_wdtt_service
             start_wdtt
             ;;

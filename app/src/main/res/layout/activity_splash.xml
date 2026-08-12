@@ -4,12 +4,10 @@
     android:layout_height="match_parent"
     android:background="#1E1E1E">
 
-    <ImageView
-        android:id="@+id/splash_image"
+    <VideoView
+        android:id="@+id/splash_video"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:contentDescription="@string/splash_content_description"
-        android:scaleType="centerCrop"
-        android:src="@drawable/clash_royale" />
+        android:contentDescription="@string/splash_content_description" />
 
 </FrameLayout>

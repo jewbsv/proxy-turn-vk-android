@@ -2,7 +2,7 @@
 
 Тоннель WireGuard с телефона на ваш VPS через **TURN-релей VK**. Для сети снаружи это выглядит как обычный WebRTC-звонок, а не как VPN.
 
-**Пакет:** `net.qwdtt.client.jewbsv` · **Версия:** 1.4.33
+**Пакет:** `net.qwdtt.client.jewbsv` · **Версия:** 1.4.34
 
 Полностью совместим с сервером и протоколом **WDTT** ([amurcanov/proxy-turn-vk-android](https://github.com/amurcanov/proxy-turn-vk-android)): `wdtt-server`, ссылки `wdtt://`, WRAP/RTP и VK-авторизация работают взаимозаменяемо — можно поднять VPS оригинальным деплоем и подключиться qWDTT.
 
@@ -84,7 +84,7 @@ qwdtt://config?name=Дом&peer=1.2.3.4:56000&hashes=хеш1,хеш2&workers=18&
 
 ```json
 {
-  "subscriptionName": "DarkBit VPN",
+  "subscriptionName": "Мой сервер",
   "description": "Подписка · до 24.08.2026",
   "trafficUsedMb": 76.8,
   "trafficLimitMb": 102912,
