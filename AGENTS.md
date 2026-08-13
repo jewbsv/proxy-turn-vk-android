@@ -36,35 +36,57 @@
 
 При генерации релизных APK ты ОБЯЗАН автоматически прогнать их через скрипт `scripts/virustotal-check.py` (загружает файлы на VirusTotal через API, дожидается анализа, получает SHA-256). Ключ API читается скриптом из переменной окружения `VT_API_KEY` или из `local.properties` (строго локально, в git не попадает).
 
-В чат выводить только финальный статус для каждого файла:
+После **каждого изменения APK и его заливки** (а также по отдельному запросу) — ОБЯЗАТЕЛЬНО создать файл обращения Google Play Protect по пути:
 
-- **Имя APK:**
-- **Статус в VirusTotal:** (число детекций / всего движков)
-- **SHA-256:**
+```
+C:\Users\jewbs\Documents\GooglePlayProtect\Google_Play_Protect_Appeal_v{VERSION}.md
+```
 
-После **каждого изменения APK и его заливки** (а также по отдельному запросу) — ОБЯЗАТЕЛЬНО выдавать пользователю полный список значений для ручного ввода в форму Google Play Protect. Форму заполняет пользователь вручную в браузере — предзаполнение Selenium не использовать.
+где `{VERSION}` — номер версии релиза (например, `v1.4.37`). Если директория `C:\Users\jewbs\Documents\GooglePlayProtect` не существует — создать её.
 
-**Шаблон (выдавать каждый раз СТРОГО в таком Markdown-формате):**
+Файл заполнять СТРОГО по шаблону ниже (Markdown-формат, таблицы, поля и формулировки — без изменений):
 
-Вот полные данные для формы Google Play Protect:
+```markdown
+# Данные для формы Google Play Protect
 
+**Версия:** v{VERSION}
 **Ссылка на форму:** https://support.google.com/googleplay/android-developer/contact/protectappeals
 
-**Данные для ввода:**
+## Поля формы
+
 - **Email address:** jewbsv@gmail.com
 - **Application package name:** net.qwdtt.client.jewbsv
-- **Additional information:** "This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect."
+- **Additional information:**
+  > This is a personal open-source proxy and utility app built cleanly from source code. It contains no malware, uses standard network APIs, and is a false positive of Play Protect.
 
-**SHA-256 hash (актуальные APK v[УКАЗАТЬ ВЕРСИЮ]):**
+## SHA-256 хэши APK
 
 | Файл | SHA-256 |
 | :--- | :--- |
-| qWDTT-arm64-v8a.apk | [хэш] |
-| qWDTT-armeabi-v7a.apk | [хэш] |
-| qWDTT-x86_64.apk | [хэш] |
-| qWDTT-universal.apk | [хэш] |
+| qWDTT-arm64-v8a.apk | {SHA256} |
+| qWDTT-armeabi-v7a.apk | {SHA256} |
+| qWDTT-x86_64.apk | {SHA256} |
+| qWDTT-universal.apk | {SHA256} |
 
-Форму заполняешь вручную, reCAPTCHA проходишь сам и жмёшь Submit.
+## Результаты VirusTotal v{VERSION}
+
+| Файл | Детекции |
+| :--- | :--- |
+| qWDTT-arm64-v8a.apk | {N} / 75 |
+| qWDTT-x86_64.apk | {N} / 75 |
+| qWDTT-armeabi-v7a.apk | {N} / 75 (Huorong — ложное срабатывание на libclient.so WireGuard) |
+| qWDTT-universal.apk | {N} / 75 (Huorong — ложное срабатывание на libclient.so WireGuard) |
+
+## Ссылки на релизы
+
+- **v{VERSION}:** https://github.com/jewbsv/proxy-turn-vk-android/releases/tag/v{VERSION}
+```
+
+Примечания по заполнению:
+- Версии в заголовке, таблицах и ссылке на релиз должны совпадать с `versionName` APK.
+- Если детекций 0, строка в таблице VirusTotal пишется как `{N} / 75` без комментария. Если 1 — добавлять пояснение `(Huorong — ложное срабатывание на libclient.so WireGuard)`.
+- После создания файла сообщить пользователю полный путь к файлу и продублировать в чат содержимое разделов **Поля формы**, **SHA-256 хэши APK** и **Результаты VirusTotal**.
+- Форму на сайте Google заполняет пользователь вручную — предзаполнение Selenium не использовать.
 
 ## 5. ОБЯЗАТЕЛЬНАЯ пересборка бинарника сервера перед сборкой APK
 
