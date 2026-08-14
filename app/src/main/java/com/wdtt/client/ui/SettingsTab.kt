@@ -40,7 +40,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +57,6 @@ import com.wdtt.client.BypassRoutes
 import com.wdtt.client.SettingsStore
 import com.wdtt.client.TunnelManager
 import com.wdtt.client.TunnelService
-import com.wdtt.client.UpdateChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -78,7 +76,6 @@ import kotlin.math.roundToInt
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1353,116 +1350,6 @@ fun SettingsTabContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-
-                        // Копия отчета
-                        OutlinedButton(
-                            onClick = {
-                                val reportText = """
-                                    Приложение: qWDTT
-                                    Версия: $currentVersion
-                                    Android API: ${Build.VERSION.SDK_INT}
-                                    Архитектура (ABI): ${Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}
-                                    Устройство: ${Build.MANUFACTURER} ${Build.MODEL}
-                                """.trimIndent()
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("qWDTT Report", reportText))
-                                Toast.makeText(context, "Отчёт о системе скопирован!", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Скопировать системный отчёт")
-                        }
-
-                        // Проверка обновлений
-                        var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
-                        var checkingUpdate by remember { mutableStateOf(false) }
-
-                        OutlinedButton(
-                            onClick = {
-                                if (checkingUpdate) return@OutlinedButton
-                                checkingUpdate = true
-                                scope.launch {
-                                    val info = UpdateChecker.fetchLatestRelease(onlyIfNewer = false)
-                                    checkingUpdate = false
-                                    val current = com.wdtt.client.BuildConfig.VERSION_NAME
-                                    when {
-                                        info == null -> Toast.makeText(
-                                            context,
-                                            "Не удалось проверить обновления",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-
-                                        UpdateChecker.compareVersions(info.version, current) > 0 ->
-                                            updateInfo = info
-
-                                        else -> Toast.makeText(
-                                            context,
-                                            "У вас установлена последняя версия",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
-                            enabled = !checkingUpdate
-                        ) {
-                            Text(if (checkingUpdate) "Проверка обновлений…" else "Проверить обновления")
-                        }
-
-                        updateInfo?.let { info ->
-                            AlertDialog(
-                                onDismissRequest = { updateInfo = null },
-                                title = { Text("Доступна новая версия") },
-                                text = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("Версия ${info.version}", fontWeight = FontWeight.SemiBold)
-                                        if (info.body.isNotBlank()) {
-                                            Text(
-                                                text = info.body,
-                                                fontSize = 13.sp,
-                                                maxLines = 6,
-                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                },
-                                confirmButton = {
-                                    val uriHandler = LocalUriHandler.current
-                                    TextButton(onClick = {
-                                        try {
-                                            UpdateChecker.downloadAndInstall(context, info)
-                                        } catch (e: Exception) {
-                                            Log.w("WDTT", "Update download failed: ${e.message}", e)
-                                            Toast.makeText(
-                                                context,
-                                                "Не удалось начать загрузку обновления: ${e.message}",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                        updateInfo = null
-                                    }) {
-                                        Text("Обновить")
-                                    }
-                                },
-                                dismissButton = {
-                                    val uriHandler = LocalUriHandler.current
-                                    TextButton(onClick = {
-                                        try {
-                                            uriHandler.openUri(info.releaseUrl)
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Не удалось открыть браузер", Toast.LENGTH_SHORT).show()
-                                        }
-                                        updateInfo = null
-                                    }) {
-                                        Text("Открыть релиз")
-                                    }
-                                }
-                            )
-                        }
 
                         Spacer(Modifier.height(12.dp))
                     }

@@ -33,12 +33,14 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.*
@@ -68,6 +70,7 @@ import com.wdtt.client.ui.LogsTab
 import com.wdtt.client.ui.SettingsTab
 import com.wdtt.client.ui.ServersTab
 import com.wdtt.client.ui.ExceptionsTab
+import com.wdtt.client.ui.InfoTab
 import kotlinx.coroutines.flow.first
 import kotlin.math.PI
 import kotlin.math.abs
@@ -260,6 +263,7 @@ private val navItems = listOf(
     NavItem(2, "Профили", Icons.Filled.FolderOpen, Icons.Outlined.Folder),
     NavItem(3, "Обход", Icons.Filled.FilterList, Icons.Outlined.FilterList),
     NavItem(4, "Логи", Icons.Filled.Terminal, Icons.Outlined.Terminal),
+    NavItem(5, "Инфо", Icons.Filled.Info, Icons.Outlined.Info),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -304,15 +308,15 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(activeNavItems, selectedTab) {
-        if (activeNavItems.none { it.id == selectedTab }) {
-            selectedTab = activeNavItems.firstOrNull()?.id ?: 0
+    LaunchedEffect(openAppSettingsRequest) {
+        if (openAppSettingsRequest > 0L) {
+            selectedTab = 5
         }
     }
 
-    LaunchedEffect(openAppSettingsRequest) {
-        if (openAppSettingsRequest > 0L) {
-            selectedTab = 0
+    LaunchedEffect(activeNavItems, selectedTab) {
+        if (activeNavItems.none { it.id == selectedTab }) {
+            selectedTab = activeNavItems.firstOrNull()?.id ?: 0
         }
     }
 
@@ -507,6 +511,7 @@ fun MainScreen(
                         )
                         3 -> ExceptionsTab()
                         4 -> LogsTab()
+                        5 -> InfoTab()
                     }
                 }
 
