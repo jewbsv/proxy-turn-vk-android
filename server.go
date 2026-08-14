@@ -187,6 +187,21 @@ func generatePassword() string {
 	return string(b)
 }
 
+func sanitizeClientName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Убираем символы, которые ломают Markdown в Telegram
+	replacer := strings.NewReplacer("*", "", "_", "", "`", "", "[", "", "]", "")
+	s = replacer.Replace(s)
+	if len([]rune(s)) > 64 {
+		r := []rune(s)
+		s = string(r[:64])
+	}
+	return strings.TrimSpace(s)
+}
+
 func passwordEntryLabel(entry *PasswordEntry, pass string, index int) string {
 	if entry != nil {
 		if label := strings.TrimSpace(entry.Label); label != "" {
@@ -533,6 +548,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 	var waitingForPorts bool
 	var waitingForHash bool
 	var waitingForLimit string // пароль, для которого ожидается новый лимит устройств
+	var waitingForRename string // пароль, для которого ожидается новое имя
 	var targetPassword string
 
 	var tempClientName string // имя клиента из Шага 1
@@ -655,6 +671,22 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					}
 					waitingForLimit = pass
 					sendTelegram(token, adminID, fmt.Sprintf("📱 Текущий лимит устройств: *%d*.\n\nВведите новое значение лимита (целое число, не меньше 1):", curLimit), nil)
+
+				} else if strings.HasPrefix(data, "rename_") {
+					pass := strings.TrimPrefix(data, "rename_")
+					dbMutex.Lock()
+					entry, exists := db.Passwords[pass]
+					curName := ""
+					if exists && entry != nil {
+						curName = passwordEntryLabel(entry, pass, 0)
+					}
+					dbMutex.Unlock()
+					if !exists || entry == nil {
+						sendTelegram(token, adminID, "❌ Клиент не найден", nil)
+						continue
+					}
+					waitingForRename = pass
+					sendTelegram(token, adminID, fmt.Sprintf("✏️ Текущее имя клиента: *%s*.\n\nВведите новое имя:", curName), nil)
 
 				} else if data == "mainlink" {
 					targetPassword = "main"
@@ -802,12 +834,13 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				waitingForPorts = false
 				waitingForHash = false
 				waitingForLimit = ""
+				waitingForRename = ""
 				targetPassword = ""
 			}
 
 			// Обработка ввода имени клиента (Шаг 1)
 			if waitingForName {
-				name := strings.TrimSpace(cmd)
+				name := sanitizeClientName(cmd)
 				if name == "" {
 					sendTelegram(token, adminID, "❌ Имя клиента не может быть пустым. Введите имя ещё раз:", nil)
 					continue
@@ -879,6 +912,32 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 				txt, keyboard := buildClientCard(entry, pass)
 				dbMutex.Unlock()
 				sendTelegram(token, adminID, fmt.Sprintf("✅ Лимит устройств обновлён: *%d*", newLimit), nil)
+				sendTelegram(token, adminID, txt, map[string]interface{}{"inline_keyboard": keyboard})
+				continue
+			}
+
+			// Обработка ввода нового имени клиента
+			if waitingForRename != "" {
+				pass := waitingForRename
+				waitingForRename = ""
+				newName := sanitizeClientName(cmd)
+				if newName == "" {
+					sendTelegram(token, adminID, "❌ Имя клиента не может быть пустым. Отправьте /list, выберите клиента и нажмите «Изменить имя клиента» ещё раз.", nil)
+					continue
+				}
+				dbMutex.Lock()
+				entry, exists := db.Passwords[pass]
+				if !exists || entry == nil {
+					dbMutex.Unlock()
+					sendTelegram(token, adminID, "❌ Клиент не найден", nil)
+					continue
+				}
+				oldName := passwordEntryLabel(entry, pass, 0)
+				entry.Label = newName
+				saveDB()
+				txt, keyboard := buildClientCard(entry, pass)
+				dbMutex.Unlock()
+				sendTelegram(token, adminID, fmt.Sprintf("✅ Имя клиента изменено: *%s* → *%s*", oldName, newName), nil)
 				sendTelegram(token, adminID, txt, map[string]interface{}{"inline_keyboard": keyboard})
 				continue
 			}
@@ -981,7 +1040,7 @@ func botLoop(token string, adminIDstr string, wgDev *device.Device) {
 					continue
 				}
 				expiresAt := time.Now().Add(time.Duration(tempDays) * 24 * time.Hour).Unix()
-				newLabel := strings.TrimSpace(tempClientName)
+				newLabel := sanitizeClientName(tempClientName)
 				if newLabel == "" {
 					newLabel = nextPasswordLabel()
 				}
@@ -1164,10 +1223,14 @@ func buildClientCard(entry *PasswordEntry, pass string) (string, [][]map[string]
 			"callback_data": "unbind_" + pass,
 		})
 	}
-	kb = append(kb, map[string]interface{}{
-		"text":          "📱 Изменить лимит устройств",
-		"callback_data": "limit_" + pass,
-	})
+			kb = append(kb, map[string]interface{}{
+				"text":          "✏️ Изменить имя клиента",
+				"callback_data": "rename_" + pass,
+			})
+			kb = append(kb, map[string]interface{}{
+				"text":          "📱 Изменить лимит устройств",
+				"callback_data": "limit_" + pass,
+			})
 	if entry.IsDeactivated {
 		kb = append(kb, map[string]interface{}{
 			"text":          "✅ Активировать",
