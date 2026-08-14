@@ -360,8 +360,12 @@ fun MainScreen(
                     try {
                         UpdateChecker.downloadAndInstall(context, info)
                     } catch (e: Exception) {
-                        Log.w("WDTT", "Update download failed: ${e.message}")
-                        Toast.makeText(context, "Не удалось начать загрузку обновления", Toast.LENGTH_SHORT).show()
+                        Log.w("WDTT", "Update download failed: ${e.message}", e)
+                        Toast.makeText(
+                            context,
+                            "Не удалось начать загрузку обновления: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                     updateInfo = null
                 }) {

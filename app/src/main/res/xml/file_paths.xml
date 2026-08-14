@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <external-files-path name="apk_updates_ext" path="updates/" />
     <cache-path name="apk_updates" path="updates/" />
     <cache-path name="logs" path="logs/" />
 </paths>

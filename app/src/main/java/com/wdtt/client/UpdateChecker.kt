@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -186,7 +185,13 @@ object UpdateChecker {
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             ?: throw IllegalStateException("DownloadManager недоступен")
 
-        val updatesDir = File(context.cacheDir, UPDATES_DIR).apply { mkdirs() }
+        // ВАЖНО: DownloadManager — отдельный системный процесс, писать во внутреннее
+        // хранилище приложения (cacheDir, filesDir) он не может — enqueue() падает с
+        // SecurityException "Unsupported path". Используем app-specific external storage:
+        // разрешений не требует (API 19+), приватен для приложения и удаляется вместе с ним.
+        val externalRoot = context.getExternalFilesDir(null)
+            ?: throw IllegalStateException("Внешнее хранилище недоступно")
+        val updatesDir = File(externalRoot, UPDATES_DIR).apply { mkdirs() }
         val target = File(updatesDir, assetName)
         runCatching { if (target.exists()) target.delete() }
 
@@ -196,7 +201,7 @@ object UpdateChecker {
             setMimeType("application/vnd.android.package-archive")
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setAllowedOverMetered(true)
-            setDestinationUri(Uri.fromFile(target))
+            setDestinationInExternalFilesDir(context, null, "$UPDATES_DIR/$assetName")
         }
         val downloadId = dm.enqueue(request)
 
