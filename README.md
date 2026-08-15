@@ -144,6 +144,24 @@ qwdtt://config?name=Дом&peer=1.2.3.4:56000&hashes=хеш1,хеш2&workers=18&
 
 > **Примечание:** улучшения интерфейса бота были добавлены в версиях **v1.4.31–v1.4.32**; кнопка переименования — в версии **v1.4.38**.
 
+## 📊 Имена клиентов в StatusOpenVPN
+
+По умолчанию StatusOpenVPN не видит имён клиентов `wdtt0`, потому что интерфейс создаётся в userspace и у него нет файла `/etc/wireguard/wdtt0.conf`.
+
+В папке [`Wdtt0/`](Wdtt0/) лежат скрипты, которые:
+
+- генерируют `/etc/wireguard/wdtt0.conf` из имён клиентов Telegram-бота (`/etc/wdtt/passwords.json`);
+- пропатчивают [StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) так, чтобы он читал этот конфиг;
+- обновляют имена по cron.
+
+Быстрая установка на VPS (как root):
+
+```bash
+bash -c "$(curl -sL https://raw.githubusercontent.com/jewbsv/proxy-turn-vk-android/master/Wdtt0/setup.sh)"
+```
+
+Подробности и удаление — в [`Wdtt0/README.md`](Wdtt0/README.md).
+
 ## 🛠 Сборка
 
 ```bash
