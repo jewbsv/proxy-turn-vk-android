@@ -146,15 +146,19 @@ qwdtt://config?name=Дом&peer=1.2.3.4:56000&hashes=хеш1,хеш2&workers=18&
 
 ## 📊 Имена клиентов в StatusOpenVPN
 
-По умолчанию StatusOpenVPN не видит имён клиентов `wdtt0`, потому что интерфейс создаётся в userspace и у него нет файла `/etc/wireguard/wdtt0.conf`.
+[StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) — это веб-панель для мониторинга клиентов WireGuard/OpenVPN: статусы, трафик, IP-адреса и читаемые имена пиров. Она читает конфиги из `/etc/wireguard/` и берёт имена из комментариев `# Client = ...`.
+
+Для интерфейса `wdtt0` из qWDTT/WDTT такого конфига нет, поэтому в StatusOpenVPN имена отображаются как `N/A`.
+
+**Важно:** скрипты ниже — это патч для уже установленного StatusOpenVPN, а не его установка. Сам StatusOpenVPN должен быть развёрнут заранее.
 
 В папке [`Wdtt0/`](Wdtt0/) лежат скрипты, которые:
 
 - генерируют `/etc/wireguard/wdtt0.conf` из имён клиентов Telegram-бота (`/etc/wdtt/passwords.json`);
-- пропатчивают [StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) так, чтобы он читал этот конфиг;
+- пропатчивают StatusOpenVPN так, чтобы он читал этот конфиг;
 - обновляют имена по cron.
 
-Быстрая установка на VPS (как root):
+Быстрая установка патча на VPS (как root):
 
 ```bash
 bash -c "$(curl -sL https://raw.githubusercontent.com/jewbsv/proxy-turn-vk-android/master/Wdtt0/setup.sh)"

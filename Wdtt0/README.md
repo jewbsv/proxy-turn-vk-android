@@ -2,6 +2,10 @@
 
 Скрипты, чтобы [StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) показывал читаемые имена клиентов интерфейса `wdtt0` из qWDTT/WDTT-сервера.
 
+[StatusOpenVPN](https://github.com/TheMurmabis/StatusOpenVPN) — это веб-панель для мониторинга клиентов WireGuard/OpenVPN: статусы, трафик, IP-адреса и имена пиров. Она читает конфиги из `/etc/wireguard/` и выводит имена из комментариев `# Client = ...`.
+
+**Важно:** данный репозиторий — это патч для уже установленного StatusOpenVPN, а не его установка. Сам StatusOpenVPN должен быть развёрнут заранее, по умолчанию в `/root/web`.
+
 ## Зачем
 
 qWDTT-сервер создаёт WireGuard-интерфейс `wdtt0` в userspace через `wireguard-go`. StatusOpenVPN ищет конфиг `/etc/wireguard/wdtt0.conf`, но такого файла нет, поэтому в столбце **Name** отображается `N/A`.
